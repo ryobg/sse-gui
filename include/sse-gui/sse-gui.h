@@ -105,36 +105,21 @@ typedef void (SSGUI_CCONV* ssgui_last_error_t) (size_t*, char*);
 /******************************************************************************/
 
 /**
- * Hooks upon process rendering pipeline using SSEH
- *
- * This should be called before #ssgui_ini()
- *
- * @param io as set of methods SSGUI to use for rendering
- * @returns non-zero on success, otherwise see #ssgui_last_error ()
- */
-
-SSGUI_API int SSGUI_CCONV
-ssgui_detour (void* sseh);
-
-/** @see #ssgui_detour() */
-
-typedef int (SSGUI_CCONV* ssgui_detour_t) (void*);
-
-/**
  * Initialize SSGUI.
  *
  * This function must be called first before any further usage (excluding
  * #ssgui_version(), #ssgui_detour() and #ssgui_last_error()).
  *
+ * @param sseh api to use for hooking upon the rendering pipeline
  * @returns non-zero on success, otherwise see #ssgui_last_error ()
  */
 
 SSGUI_API int SSGUI_CCONV
-ssgui_init ();
+ssgui_init (void* sseh);
 
 /** @see #ssgui_init() */
 
-typedef int (SSGUI_CCONV* ssgui_init_t) ();
+typedef int (SSGUI_CCONV* ssgui_init_t) (void*);
 
 /**
  * Uninitialize SSGUI.
@@ -182,8 +167,6 @@ struct ssgui_api_v1
 	ssgui_version_t version;
 	/** @see #ssgui_last_error() */
 	ssgui_last_error_t last_error;
-	/** @see #ssgui_detour() */
-	ssgui_detour_t detour;
 	/** @see #ssgui_init() */
 	ssgui_init_t init;
 	/** @see #ssgui_uninit() */

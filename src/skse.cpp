@@ -50,6 +50,9 @@ static PluginHandle plugin = 0;
 /// To send events to the other plugins.
 static SKSEMessagingInterface* messages = nullptr;
 
+/// In order to hook upon D3D11
+static std::unique_ptr<sseh_api> sseh;
+
 /// Log file in pre-defined location
 static std::ofstream logfile;
 
@@ -71,9 +74,9 @@ static decltype(logfile)&
 log ()
 {
     // MinGW 4.9.1 have no std::put_time()
-	using std::chrono::system_clock;
-	auto now_c = system_clock::to_time_t (system_clock::now ());
-	auto loc_c = std::localtime (&now_c);
+    using std::chrono::system_clock;
+    auto now_c = system_clock::to_time_t (system_clock::now ());
+    auto loc_c = std::localtime (&now_c);
     logfile << '['
             << 1900 + loc_c->tm_year
             << '-' << std::setw (2) << std::setfill ('0') << loc_c->tm_mon
@@ -105,25 +108,38 @@ log_error ()
 
 static void handle_sseh_message (SKSEMessagingInterface::Message* m)
 {
-    if (m->type)
+    if (!m->type)
+        return;
+
+    if (m->type != SSEH_API_VERSION)
     {
-        log () << "Accepting SSEH interface." << std::endl;
-
-        if (m->type != SSEH_API_VERSION)
-        {
-            log () << "Unsupported SSEH interface v" << m->type
-                   << " (it is not v" << SSEH_API_VERSION
-                   << "). Bailing out." << std::endl;
-            return;
-        }
-
-        if (!ssgui_detour (m->data))
-            log_error ();
-
+        log () << "Unsupported SSEH interface v" << m->type
+               << " (it is not v" << SSEH_API_VERSION
+               << "). Bailing out." << std::endl;
         return;
     }
 
-    initialized = ssgui_init ();
+    sseh.reset (new sseh_api (*reinterpret_cast<sseh_api*> (m->data)));
+
+    log () << "Accepted SSEH interface v" << SSEH_API_VERSION << std::endl;
+}
+
+//--------------------------------------------------------------------------------------------------
+
+/// Post load ensure SSEH is loaded and can accept listeners
+
+static void handle_skse_message (SKSEMessagingInterface::Message* m)
+{
+    if (m->type == SKSEMessagingInterface::kMessage_PostLoad)
+    {
+        messages->RegisterListener (plugin, "SSEH", handle_sseh_message);
+        return;
+    }
+
+    if (!sseh || m->type != SKSEMessagingInterface::kMessage_InputLoaded)
+        return;
+
+    initialized = ssgui_init (sseh.get ());
     if (!initialized)
     {
         log_error ();
@@ -137,17 +153,6 @@ static void handle_sseh_message (SKSEMessagingInterface::Message* m)
     messages->Dispatch (plugin, UInt32 (api), &data, sizeof (data), nullptr);
 
     log () << "SSGUI interface broadcasted." << std::endl;
-}
-
-//--------------------------------------------------------------------------------------------------
-
-/// Post load ensure SSEH is loaded and can accept listeners
-
-static void handle_skse_message (SKSEMessagingInterface::Message* m)
-{
-    if (m->type != SKSEMessagingInterface::kMessage_PostLoad)
-        return;
-    messages->RegisterListener (plugin, "SSEH", handle_sseh_message);
 }
 
 //--------------------------------------------------------------------------------------------------
