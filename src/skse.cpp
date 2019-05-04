@@ -30,6 +30,7 @@
  */
 
 #include <sse-gui/sse-gui.h>
+#include <sse-hooks/sse-hooks.h>
 
 #include <cstdint>
 typedef std::uint32_t UInt32;
@@ -44,13 +45,16 @@ typedef std::uint64_t UInt64;
 //--------------------------------------------------------------------------------------------------
 
 /// Given by SKSE to uniquely identify this DLL
-PluginHandle plugin = 0;
+static PluginHandle plugin = 0;
 
 /// To send events to the other plugins.
-SKSEMessagingInterface* messages = nullptr;
+static SKSEMessagingInterface* messages = nullptr;
 
 /// Log file in pre-defined location
 static std::ofstream logfile;
+
+/// Is SS GUI in valid state
+static bool initialized = false;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -91,7 +95,7 @@ log_error ()
     ssgui_last_error (&n, nullptr);
     if (n)
     {
-        std::string s (n+1, '\0');
+        std::string s (n, '\0');
         ssgui_last_error (&n, &s[0]);
         log () << s << std::endl;
     }
@@ -99,12 +103,33 @@ log_error ()
 
 //--------------------------------------------------------------------------------------------------
 
-void handle_skse_message (SKSEMessagingInterface::Message* m)
+static void handle_sseh_message (SKSEMessagingInterface::Message* m)
 {
-    if (!m || m->type != SKSEMessagingInterface::kMessage_PostLoad)
-        return;
+    if (m->type)
+    {
+        log () << "Accepting SSEH interface." << std::endl;
 
-    log () << "All mods reported as loaded." << std::endl;
+        if (m->type != SSEH_API_VERSION)
+        {
+            log () << "Unsupported SSEH interface v" << m->type
+                   << " (it is not v" << SSEH_API_VERSION
+                   << "). Bailing out." << std::endl;
+            return;
+        }
+
+        if (!ssgui_detour (m->data))
+            log_error ();
+
+        return;
+    }
+
+    initialized = ssgui_init ();
+    if (!initialized)
+    {
+        log_error ();
+        return;
+    }
+    log () << "Initialized." << std::endl;
 
     int api;
     ssgui_version (&api, nullptr, nullptr, nullptr);
@@ -112,6 +137,17 @@ void handle_skse_message (SKSEMessagingInterface::Message* m)
     messages->Dispatch (plugin, UInt32 (api), &data, sizeof (data), nullptr);
 
     log () << "SSGUI interface broadcasted." << std::endl;
+}
+
+//--------------------------------------------------------------------------------------------------
+
+/// Post load ensure SSEH is loaded and can accept listeners
+
+static void handle_skse_message (SKSEMessagingInterface::Message* m)
+{
+    if (m->type != SKSEMessagingInterface::kMessage_PostLoad)
+        return;
+    messages->RegisterListener (plugin, "SSEH", handle_sseh_message);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -155,13 +191,7 @@ SKSEPlugin_Load (SKSEInterface const* skse)
     const char* b;
     ssgui_version (&a, &m, &p, &b);
     log () << "SSGUI "<< a <<'.'<< m <<'.'<< p <<" ("<< b <<')' << std::endl;
-
-    int r = ssgui_init ();
-
-    if (r) log () << "Initialized." << std::endl;
-    else log_error ();
-
-    return r;
+    return true;
 }
 
 //--------------------------------------------------------------------------------------------------

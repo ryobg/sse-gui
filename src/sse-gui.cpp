@@ -27,6 +27,7 @@
  */
 
 #include <sse-gui/sse-gui.h>
+#include <sse-hooks/sse-hooks.h>
 
 #include <cstring>
 #include <string>
@@ -37,6 +38,7 @@
 #include <fstream>
 
 #include <windows.h>
+#include <d3d11.h>
 
 //--------------------------------------------------------------------------------------------------
 
@@ -178,6 +180,36 @@ ssgui_last_error (size_t* size, char* message)
 //--------------------------------------------------------------------------------------------------
 
 SSGUI_API int SSGUI_CCONV
+ssgui_detour (void* p)
+{
+    auto sseh = *reinterpret_cast<sseh_api*> (p);
+
+    int api;
+    sseh.version (&api, nullptr, nullptr, nullptr);
+    if (api != SSEH_API_VERSION)
+    {
+        ssgui_error = __func__ + " incompatible API versions"s;
+        return false;
+    }
+
+    auto error = [&] {
+        std::size_t n;
+        sseh.last_error (&n, nullptr);
+        std::string s (n, '\0');
+        if (n) sseh.last_error (&n, &s[0]);
+        ssgui_error = __func__ + s;
+        return false;
+    };
+
+    if (!sseh.profile ("SSGUI"))
+        return error ();
+
+    return true;
+}
+
+//--------------------------------------------------------------------------------------------------
+
+SSGUI_API int SSGUI_CCONV
 ssgui_init ()
 {
     return true;
@@ -206,6 +238,7 @@ ssgui_make_api ()
     ssgui_api api  = {};
 	api.version    = ssgui_version;
 	api.last_error = ssgui_last_error;
+	api.detour     = ssgui_detour;
 	api.init       = ssgui_init;
 	api.uninit     = ssgui_uninit;
 	api.execute    = ssgui_execute;
