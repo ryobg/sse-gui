@@ -32,10 +32,10 @@
 #include <cstring>
 #include <string>
 #include <array>
-#include <vector>
 #include <locale>
 #include <algorithm>
 #include <fstream>
+#include <thread>
 
 #include <windows.h>
 #include <d3d11.h>
@@ -44,16 +44,14 @@
 
 using namespace std::string_literals;
 
+/// Opened from within skse.cpp
+extern std::ofstream log ();
+
 /// Supports SSGUI specific errors in a manner of #GetLastError() and #FormatMessage()
 static std::string ssgui_error;
 
-/// Hooked and gathered data to support the GUI
-
-struct
-{
-    HWND window; ///< Skyrim Special Edition
-}
-target = {};
+/// Main loop of the GUI
+static std::thread gui_thread;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -111,28 +109,6 @@ copy_string (std::string const& src, std::size_t* n, char* dst)
 
 //--------------------------------------------------------------------------------------------------
 
-/// Common try/catch block used in API methods
-
-template<class Function>
-static bool
-try_call (Function&& func)
-{
-    ssgui_error.clear ();
-    try
-    {
-        func ();
-    }
-    catch (std::exception const& ex)
-    {
-        ssgui_error = __func__ + " "s + ex.what ();
-        return false;
-    }
-    return true;
-}
-
-//--------------------------------------------------------------------------------------------------
-std::wofstream wlog ("ssgui1.log");
-
 static BOOL CALLBACK
 find_window (HWND hwnd, LPARAM lParam)
 {
@@ -147,7 +123,106 @@ find_window (HWND hwnd, LPARAM lParam)
     }
 
     *reinterpret_cast<HWND*> (lParam) = hwnd;
-    return false;
+    return true;
+}
+
+//--------------------------------------------------------------------------------------------------
+
+static void
+main_thread (volatile bool* first_pass, sseh_api const* p_sseh)
+{
+    log () << "Started SSE GUI thread." << std::endl;
+
+    sseh_api const sseh = *p_sseh;
+
+    struct scope_guard {
+        volatile bool* f;
+        scope_guard (volatile bool* f) : f (f) {}
+        ~scope_guard () { *f = true; }
+    } guard (first_pass);
+
+    auto error = [&] {
+        std::size_t n;
+        sseh.last_error (&n, nullptr);
+        std::string s (n, '\0');
+        if (n) sseh.last_error (&n, &s[0]);
+        ssgui_error = "ssgui_detour " + s;
+    };
+
+    PFN_D3D11_CREATE_DEVICE_AND_SWAP_CHAIN create_device;
+    if (!sseh.find_address ("d3d11.dll", "D3D11CreateDeviceAndSwapChain", (void**) &create_device))
+    {
+        error ();
+        return;
+    }
+
+    WNDCLASSEX winclass;
+    winclass.cbSize = sizeof (WNDCLASSEX);
+    winclass.style = CS_HREDRAW | CS_VREDRAW;
+    winclass.lpfnWndProc = DefWindowProc;
+    winclass.cbClsExtra = 0;
+    winclass.cbWndExtra = 0;
+    winclass.hInstance = ::GetModuleHandle (nullptr);
+    winclass.hIcon = nullptr;
+    winclass.hCursor = nullptr;
+    winclass.hbrBackground = nullptr;
+    winclass.lpszMenuName = nullptr;
+    winclass.lpszClassName = L"SSGUI class";
+    winclass.hIconSm = nullptr;
+    ::RegisterClassEx (&winclass);
+    auto window = ::CreateWindow (winclass.lpszClassName, L"SSGUI window",
+            WS_OVERLAPPEDWINDOW, 0, 0, 100, 100, nullptr, nullptr, winclass.hInstance, NULL);
+    if (!window)
+    {
+        error ();
+        return;
+    }
+
+    DXGI_SWAP_CHAIN_DESC sd = [window]
+    {
+        DXGI_SWAP_CHAIN_DESC sd;
+        ::ZeroMemory (&sd, sizeof (sd));
+        sd.BufferCount                 = 1;
+        sd.BufferDesc.Format           = DXGI_FORMAT_R8G8B8A8_UNORM;
+        sd.BufferDesc.Scaling          = DXGI_MODE_SCALING_UNSPECIFIED;
+        sd.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
+        sd.BufferUsage                 = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+        sd.Flags                       = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+        sd.SampleDesc.Quality          = 0;
+        sd.SampleDesc.Count            = 1;
+        sd.OutputWindow                = window;
+        sd.Windowed                    = !(::GetWindowLongPtr (window, GWL_STYLE) & WS_POPUP);
+        sd.SwapEffect                  = DXGI_SWAP_EFFECT_DISCARD;
+        sd.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
+        sd.BufferDesc.Scaling          = DXGI_MODE_SCALING_UNSPECIFIED;
+        sd.BufferDesc.Width            = 1;
+        sd.BufferDesc.Height           = 1;
+        sd.BufferDesc.RefreshRate.Numerator   = 60;
+        sd.BufferDesc.RefreshRate.Denominator = 1;
+        return sd;
+    } ();
+
+    IDXGISwapChain* swap = nullptr;
+    ID3D11Device* device = nullptr;
+    ID3D11DeviceContext* context = nullptr;
+    if (FAILED (create_device (
+            nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, nullptr, 0,
+            D3D11_SDK_VERSION, &sd, &swap, &device, nullptr, &context)))
+    {
+        ssgui_error = __func__ + " D3D11CreateDeviceAndSwapChain"s;
+        return;
+    }
+
+    log () << "GUI setup done." << std::endl;
+
+    device->Release ();
+    context->Release ();
+    swap->Release ();
+    ::DestroyWindow (window);
+	::UnregisterClass (winclass.lpszClassName, winclass.hInstance);
+
+    //if (!sseh.profile ("SSGUI"))
+    //    return error ();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -180,8 +255,8 @@ ssgui_last_error (size_t* size, char* message)
         return;
     }
 
-	auto err = ::GetLastError ();
-	if (!err)
+    auto err = ::GetLastError ();
+    if (!err)
     {
         *size = 0;
         if (message) *message = 0;
@@ -210,82 +285,23 @@ ssgui_last_error (size_t* size, char* message)
 SSGUI_API int SSGUI_CCONV
 ssgui_init (void* p_sseh)
 {
-    auto sseh = *reinterpret_cast<sseh_api*> (p_sseh);
+    auto sseh = reinterpret_cast<sseh_api*> (p_sseh);
 
     int api;
-    sseh.version (&api, nullptr, nullptr, nullptr);
+    sseh->version (&api, nullptr, nullptr, nullptr);
     if (api != SSEH_API_VERSION)
     {
         ssgui_error = __func__ + " incompatible API versions"s;
         return false;
     }
 
-    auto error = [&] {
-        std::size_t n;
-        sseh.last_error (&n, nullptr);
-        std::string s (n, '\0');
-        if (n) sseh.last_error (&n, &s[0]);
-        ssgui_error = "ssgui_detour " + s;
-        return false;
-    };
+    static volatile bool first_pass = false;
+    gui_thread = std::thread (main_thread, &first_pass, sseh);
 
-    PFN_D3D11_CREATE_DEVICE_AND_SWAP_CHAIN create_device;
-    if (!sseh.find_address ("d3d11.dll", "D3D11CreateDeviceAndSwapChain", (void**) &create_device))
-        return error ();
+    while (!first_pass)
+        std::this_thread::sleep_for (std::chrono::milliseconds (10));
 
-    HWND window = nullptr;
-    ::EnumWindows (find_window, (LPARAM) &window);
-    if (!window)
-    {
-        ssgui_error = __func__ + " unable to find window"s;
-        return false;
-    }
-
-	DXGI_SWAP_CHAIN_DESC sd = [window]
-	{
-        DXGI_SWAP_CHAIN_DESC sd;
-        ::ZeroMemory (&sd, sizeof (sd));
-		sd.BufferCount                 = 1;
-		sd.BufferDesc.Format           = DXGI_FORMAT_R8G8B8A8_UNORM;
-		sd.BufferDesc.Scaling          = DXGI_MODE_SCALING_UNSPECIFIED;
-		sd.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
-		sd.BufferUsage                 = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-		sd.Flags                       = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
-		sd.SampleDesc.Quality          = 0;
-		sd.SampleDesc.Count            = 1;
-		sd.OutputWindow                = window;
-        sd.Windowed                    = !(::GetWindowLongPtr (window, GWL_STYLE) & WS_POPUP);
-		sd.SwapEffect                  = DXGI_SWAP_EFFECT_DISCARD;
-		sd.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
-		sd.BufferDesc.Scaling          = DXGI_MODE_SCALING_UNSPECIFIED;
-		sd.BufferDesc.Width            = 1;
-		sd.BufferDesc.Height           = 1;
-		sd.BufferDesc.RefreshRate.Numerator   = 60;
-		sd.BufferDesc.RefreshRate.Denominator = 1;
-        return sd;
-	} ();
-
-	D3D_FEATURE_LEVEL obtained;
-    std::array<D3D_FEATURE_LEVEL, 2> levels = { D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1 };
-    IDXGISwapChain* swap = nullptr;
-    ID3D11Device* device = nullptr;
-    ID3D11DeviceContext* context = nullptr;
-    if (FAILED (create_device (
-            nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, levels.data (), levels.size (),
-            D3D11_SDK_VERSION, &sd, &swap, &device, &obtained, &context)))
-	{
-		ssgui_error = __func__ + " D3D11CreateDeviceAndSwapChain"s;
-		return false;
-	}
-
-    device->Release ();
-    context->Release ();
-    swap->Release ();
-
-    if (!sseh.profile ("SSGUI"))
-        return error ();
-
-    return true;
+    return ssgui_error.empty ();
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -309,11 +325,11 @@ SSGUI_API ssgui_api SSGUI_CCONV
 ssgui_make_api ()
 {
     ssgui_api api  = {};
-	api.version    = ssgui_version;
-	api.last_error = ssgui_last_error;
-	api.init       = ssgui_init;
-	api.uninit     = ssgui_uninit;
-	api.execute    = ssgui_execute;
+    api.version    = ssgui_version;
+    api.last_error = ssgui_last_error;
+    api.init       = ssgui_init;
+    api.uninit     = ssgui_uninit;
+    api.execute    = ssgui_execute;
     return api;
 }
 

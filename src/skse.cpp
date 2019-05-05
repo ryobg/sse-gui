@@ -54,10 +54,7 @@ static SKSEMessagingInterface* messages = nullptr;
 static std::unique_ptr<sseh_api> sseh;
 
 /// Log file in pre-defined location
-static std::ofstream logfile;
-
-/// Is SS GUI in valid state
-static bool initialized = false;
+std::ofstream logfile;
 
 //--------------------------------------------------------------------------------------------------
 
@@ -70,7 +67,7 @@ static void open_log ()
 
 //--------------------------------------------------------------------------------------------------
 
-static decltype(logfile)&
+decltype(logfile)&
 log ()
 {
     // MinGW 4.9.1 have no std::put_time()
@@ -139,8 +136,7 @@ static void handle_skse_message (SKSEMessagingInterface::Message* m)
     if (!sseh || m->type != SKSEMessagingInterface::kMessage_InputLoaded)
         return;
 
-    initialized = ssgui_init (sseh.get ());
-    if (!initialized)
+    if (!ssgui_init (sseh.get ()))
     {
         log_error ();
         return;
