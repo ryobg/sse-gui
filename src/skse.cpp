@@ -50,11 +50,14 @@ static PluginHandle plugin = 0;
 /// To send events to the other plugins.
 static SKSEMessagingInterface* messages = nullptr;
 
-/// In order to hook upon D3D11
-static std::unique_ptr<sseh_api> sseh;
-
 /// Log file in pre-defined location
-std::ofstream logfile;
+static std::ofstream logfile;
+
+/// [shared] In order to hook upon D3D11
+std::unique_ptr<sseh_api> sseh;
+
+/// Defined in sse-gui.cpp
+extern std::string ssgui_last_error ();
 
 //--------------------------------------------------------------------------------------------------
 
@@ -80,32 +83,16 @@ log ()
             << '-' << std::setw (2) << std::setfill ('0') << loc_c->tm_mday
             << ' ' << std::setw (2) << std::setfill ('0') << loc_c->tm_hour
             << ':' << std::setw (2) << std::setfill ('0') << loc_c->tm_min
+            << ':' << std::setw (2) << std::setfill ('0') << loc_c->tm_sec
         << "] ";
     return logfile;
 }
 
 //--------------------------------------------------------------------------------------------------
 
-/// Frequent scenario to get the last error and log it
-
-static void
-log_error ()
-{
-    size_t n = 0;
-    ssgui_last_error (&n, nullptr);
-    if (n)
-    {
-        std::string s (n, '\0');
-        ssgui_last_error (&n, &s[0]);
-        log () << s << std::endl;
-    }
-}
-
-//--------------------------------------------------------------------------------------------------
-
 static void handle_sseh_message (SKSEMessagingInterface::Message* m)
 {
-    if (!m->type)
+    if (m->type == 0) // After sseh_apply ()
         return;
 
     if (m->type != SSEH_API_VERSION)
@@ -117,18 +104,27 @@ static void handle_sseh_message (SKSEMessagingInterface::Message* m)
     }
 
     sseh.reset (new sseh_api (*reinterpret_cast<sseh_api*> (m->data)));
-
     log () << "Accepted SSEH interface v" << SSEH_API_VERSION << std::endl;
+
+    extern bool detour_create_device ();
+    if (!detour_create_device ())
+    {
+        log () << ssgui_last_error () << std::endl;
+        log () << "Unable to detour D3D11CreateDeviceAndSwapChain. Bailing out." << std::endl;
+    }
 }
 
 //--------------------------------------------------------------------------------------------------
 
-/// Post load ensure SSEH is loaded and can accept listeners
+/// Post Load ensure SSEH is loaded and can accept listeners
+/// Post Post load starts to sniff about D11 context, devices, windows and etc.
+/// Input Loaded ensures these are already created and we can install SSE GUI
 
 static void handle_skse_message (SKSEMessagingInterface::Message* m)
 {
     if (m->type == SKSEMessagingInterface::kMessage_PostLoad)
     {
+        log () << "SKSE Post Load." << std::endl;
         messages->RegisterListener (plugin, "SSEH", handle_sseh_message);
         return;
     }
@@ -136,9 +132,12 @@ static void handle_skse_message (SKSEMessagingInterface::Message* m)
     if (!sseh || m->type != SKSEMessagingInterface::kMessage_InputLoaded)
         return;
 
-    if (!ssgui_init (sseh.get ()))
+    log () << "SKSE Input Loaded." << std::endl;
+    extern bool setup_imgui ();
+    if (!setup_imgui ())
     {
-        log_error ();
+        log () << ssgui_last_error () << std::endl;
+        log () << "Unable to setup ImGUI. Bailing out." << std::endl;
         return;
     }
     log () << "Initialized." << std::endl;
