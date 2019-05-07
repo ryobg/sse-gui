@@ -145,9 +145,13 @@ static void ImGui_ImplWin32_UpdateMousePos()
                 io.MousePos = ImVec2((float)pos.x, (float)pos.y);
 }
 
-#ifdef _MSC_VER
-#pragma comment(lib, "xinput")
-#endif
+//#ifdef _MSC_VER
+//#pragma comment(lib, "xinput")
+//#endif
+typedef DWORD (WINAPI *XInputGetCapabilities_t) (DWORD, DWORD, XINPUT_CAPABILITIES*);
+typedef DWORD (WINAPI *XInputGetState_t) (DWORD, XINPUT_STATE*);
+static XInputGetCapabilities_t pXInputGetCapabilities = nullptr;
+static XInputGetState_t pXInputGetState = nullptr;
 
 // Gamepad navigation mapping
 static void ImGui_ImplWin32_UpdateGamepads()
@@ -156,19 +160,28 @@ static void ImGui_ImplWin32_UpdateGamepads()
     memset(io.NavInputs, 0, sizeof(io.NavInputs));
     if ((io.ConfigFlags & ImGuiConfigFlags_NavEnableGamepad) == 0)
         return;
+    if (!pXInputGetState || !pXInputGetCapabilities)
+    {
+        if (HMODULE hDll = GetModuleHandleA("xinput.dll")) {
+            pXInputGetState = (XInputGetState_t) GetProcAddress(hDll, "XInputGetState");
+            pXInputGetCapabilities = (XInputGetCapabilities_t) GetProcAddress(hDll, "XInputGetCapabilities");
+        }
+    }
+    if (!pXInputGetState || !pXInputGetCapabilities)
+        return;
 
     // Calling XInputGetState() every frame on disconnected gamepads is unfortunately too slow.
     // Instead we refresh gamepad availability by calling XInputGetCapabilities() _only_ after receiving WM_DEVICECHANGE.
     if (g_WantUpdateHasGamepad)
     {
         XINPUT_CAPABILITIES caps;
-        g_HasGamepad = (XInputGetCapabilities(0, XINPUT_FLAG_GAMEPAD, &caps) == ERROR_SUCCESS);
+        g_HasGamepad = (pXInputGetCapabilities(0, XINPUT_FLAG_GAMEPAD, &caps) == ERROR_SUCCESS);
         g_WantUpdateHasGamepad = false;
     }
 
     XINPUT_STATE xinput_state;
     io.BackendFlags &= ~ImGuiBackendFlags_HasGamepad;
-    if (g_HasGamepad && XInputGetState(0, &xinput_state) == ERROR_SUCCESS)
+    if (g_HasGamepad && pXInputGetState(0, &xinput_state) == ERROR_SUCCESS)
     {
         const XINPUT_GAMEPAD& gamepad = xinput_state.Gamepad;
         io.BackendFlags |= ImGuiBackendFlags_HasGamepad;

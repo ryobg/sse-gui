@@ -31,6 +31,7 @@
 
 #include <sse-gui/sse-gui.h>
 #include <sse-hooks/sse-hooks.h>
+#include <gsl/gsl_assert>
 
 #include <cstdint>
 typedef std::uint32_t UInt32;
@@ -38,6 +39,7 @@ typedef std::uint64_t UInt64;
 #include <skse/PluginAPI.h>
 
 #include <vector>
+#include <memory>
 #include <chrono>
 #include <fstream>
 #include <iomanip>
@@ -90,6 +92,21 @@ log ()
 
 //--------------------------------------------------------------------------------------------------
 
+/// [shared] Convert to std::string #sseh_last_error()
+
+std::string
+sseh_error ()
+{
+    Expects (sseh);
+    std::size_t n;
+    sseh->last_error (&n, nullptr);
+    std::string s (n, '\0');
+    if (n) sseh->last_error (&n, &s[0]);
+    return s;
+};
+
+//--------------------------------------------------------------------------------------------------
+
 static void handle_sseh_message (SKSEMessagingInterface::Message* m)
 {
     if (m->type == 0) // After sseh_apply ()
@@ -110,7 +127,14 @@ static void handle_sseh_message (SKSEMessagingInterface::Message* m)
     if (!detour_create_device ())
     {
         log () << ssgui_last_error () << std::endl;
-        log () << "Unable to detour D3D11CreateDeviceAndSwapChain. Bailing out." << std::endl;
+        log () << "Unable to detour DirectX. Bailing out." << std::endl;
+    }
+
+    extern bool detour_dinput ();
+    if (!detour_dinput ())
+    {
+        log () << ssgui_last_error () << std::endl;
+        log () << "Unable to detour DirectInput. Bailing out." << std::endl;
     }
 }
 
