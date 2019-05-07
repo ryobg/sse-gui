@@ -31,9 +31,9 @@
 //#ifdef _MSC_VER
 //#pragma comment(lib, "d3dcompiler") // Automatically link with d3dcompiler.lib as we are using D3DCompile() below.
 //#endif
-typedef HRESULT (WINAPI *D3DCompile_t)(LPCVOID, SIZE_T, LPCSTR, D3D_SHADER_MACRO*, ID3DInclude*, LPCSTR, LPCSTR, UINT, UINT, ID3DBlob**, ID3DBlob*);
-static D3DCompile_t D3DCompile = NULL;
-
+extern HRESULT WINAPI D3DCompile (
+        LPCVOID, SIZE_T, LPCSTR, D3D_SHADER_MACRO*, ID3DInclude*, LPCSTR, LPCSTR,
+        UINT, UINT, ID3DBlob**, ID3DBlob*);
 
 // DirectX data
 static ID3D11Device*            g_pd3dDevice = NULL;
@@ -342,18 +342,6 @@ bool    ImGui_ImplDX11_CreateDeviceObjects()
     // See https://github.com/ocornut/imgui/pull/638 for sources and details.
     //
   // Detect which d3dcompiler_XX.dll is present in the system and grab a pointer to D3DCompile. Otherwise, we can include <d3dcompiler.h>, link d3dcompiler.lib and depend on a single DLL version.
-    if (!D3DCompile)
-    {
-        for (int i = 50; i > 30 && !D3DCompile; i--)
-        {
-            char dll_name[20];
-            sprintf_s(dll_name, "d3dcompiler_%02d.dll", i);
-            if (HMODULE hDll = GetModuleHandleA(dll_name))
-                D3DCompile = (D3DCompile_t)GetProcAddress(hDll, "D3DCompile");
-        }
-        if (!D3DCompile)
-            return false;
-    }
 
     // Create the vertex shader
     {

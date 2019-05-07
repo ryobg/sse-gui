@@ -62,28 +62,145 @@ struct input_t
 /// One and only one object
 static input_t di = {};
 
+/// Saves on linking to a library
+static const GUID guid_mouse    = {
+    0x6F1D2B60, 0xD5A0, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 }};
+/// Saves on linking to a library
+static const GUID guid_keyboard = {
+    0x6F1D2B61, 0xD5A0, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 }};
+
 //--------------------------------------------------------------------------------------------------
 
-class input_device : public IDirectInputDevice8
+/// @see https://docs.microsoft.com/en-us/previous-versions/windows/desktop/ee417816(v%3dvs.85)
+
+class input_device : public IDirectInputDevice8A
 {
-    IDirectInputDevice8* p;
+    IDirectInputDevice8A* p;
+    ULONG refs;
     bool kbd;
 public:
-    explicit input_device (IDirectInputDevice8* np, bool keyboard)
-        : p (np), kbd (keyboard) { Ensures (p); }
+    explicit input_device (IDirectInputDevice8A* np, bool keyboard)
+        : p (np), refs (1), kbd (keyboard) { Ensures (p); }
     virtual ~input_device () {}
+    // IUnknown:
+    STDMETHOD (QueryInterface) (REFIID riid, void** ppvObj) {
+        return p->QueryInterface (riid, ppvObj);
+    }
+    STDMETHOD_ (ULONG, AddRef) () {
+        return ++refs;
+    }
+    STDMETHOD_ (ULONG, Release) () {
+        if (--refs == 0) { p->Release (); delete this; }
+        return refs;
+    }
+    // IDirectInputDevice8:
+    STDMETHOD (Acquire) () {
+        return p->Acquire ();
+    }
+    STDMETHOD (BuildActionMap) (LPDIACTIONFORMATA lpdiaf, LPCSTR lpszUserName, DWORD dwFlags) {
+        return p->BuildActionMap (lpdiaf, lpszUserName, dwFlags);
+    }
+    STDMETHOD (CreateEffect) (
+            REFGUID rguid, LPCDIEFFECT lpeff, LPDIRECTINPUTEFFECT* ppdeff, LPUNKNOWN punkOuter) {
+        return p->CreateEffect (rguid, lpeff, ppdeff, punkOuter);
+    }
+    STDMETHOD (EnumCreatedEffectObjects) (
+            LPDIENUMCREATEDEFFECTOBJECTSCALLBACK lpCallback, LPVOID pvRef, DWORD fl) {
+        return p->EnumCreatedEffectObjects (lpCallback, pvRef, fl);
+    }
+    STDMETHOD (EnumEffects) (LPDIENUMEFFECTSCALLBACKA lpCallback, LPVOID pvRef, DWORD dwEffType) {
+        return p->EnumEffects (lpCallback, pvRef, dwEffType);
+    }
+    STDMETHOD (EnumEffectsInFile) (
+            LPCSTR lpszFileName, LPDIENUMEFFECTSINFILECALLBACK pec, LPVOID pvRef, DWORD dwFlags) {
+        return p->EnumEffectsInFile (lpszFileName, pec, pvRef, dwFlags);
+    }
+    STDMETHOD (EnumObjects) (
+            LPDIENUMDEVICEOBJECTSCALLBACKA lpCallback, LPVOID pvRef, DWORD dwFlags) {
+        return p->EnumObjects (lpCallback, pvRef, dwFlags);
+    }
+    STDMETHOD (Escape) (LPDIEFFESCAPE pesc) {
+        return p->Escape (pesc);
+    }
+    STDMETHOD (GetCapabilities) (LPDIDEVCAPS lpDIDevCaps) {
+        return p->GetCapabilities (lpDIDevCaps);
+    }
+    STDMETHOD (GetDeviceData) (
+            DWORD cbObjectData, LPDIDEVICEOBJECTDATA rgdod, LPDWORD pdwInOut, DWORD dwFlags) {
+        return p->GetDeviceData (cbObjectData, rgdod, pdwInOut, dwFlags);
+    }
+    STDMETHOD (GetDeviceInfo) (LPDIDEVICEINSTANCEA pdidi) {
+        return p->GetDeviceInfo (pdidi);
+    }
+    STDMETHOD (GetDeviceState) (DWORD cbData, LPVOID lpvData) {
+        return p->GetDeviceState (cbData, lpvData);
+    }
+    STDMETHOD (GetEffectInfo) (LPDIEFFECTINFOA pdei, REFGUID rguid) {
+        return p->GetEffectInfo (pdei, rguid);
+    }
+    STDMETHOD (GetForceFeedbackState) (LPDWORD pdwOut) {
+        return p->GetForceFeedbackState (pdwOut);
+    }
+    STDMETHOD (GetImageInfo) (LPDIDEVICEIMAGEINFOHEADERA lpdiDevImageInfoHeader) {
+        return p->GetImageInfo (lpdiDevImageInfoHeader);
+    }
+    STDMETHOD (GetObjectInfo) (LPDIDEVICEOBJECTINSTANCEA pdidoi, DWORD dwObj, DWORD dwHow) {
+        return p->GetObjectInfo (pdidoi, dwObj, dwHow);
+    }
+    STDMETHOD (GetProperty) (REFGUID rguidProp, LPDIPROPHEADER pdiph) {
+        return p->GetProperty (rguidProp, pdiph);
+    }
+    STDMETHOD (Initialize) (HINSTANCE hinst, DWORD dwVersion, REFGUID rguid) {
+        return p->Initialize (hinst, dwVersion, rguid);
+    }
+    STDMETHOD (Poll) () {
+        return p->Poll ();
+    }
+    STDMETHOD (RunControlPanel) (HWND hwndOwner, DWORD dwFlags) {
+        return p->RunControlPanel (hwndOwner, dwFlags);
+    }
+    STDMETHOD (SendDeviceData) (
+            DWORD cbObjectData, LPCDIDEVICEOBJECTDATA rgdod, LPDWORD pdwInOut, DWORD fl) {
+        return p->SendDeviceData (cbObjectData, rgdod, pdwInOut, fl);
+    }
+    STDMETHOD (SendForceFeedbackCommand) (DWORD dwFlags) {
+        return p->SendForceFeedbackCommand (dwFlags);
+    }
+    STDMETHOD (SetActionMap) (
+            LPDIACTIONFORMATA lpdiActionFormat, LPCSTR lptszUserName, DWORD dwFlags) {
+        return p->SetActionMap (lpdiActionFormat, lptszUserName, dwFlags);
+    }
+    STDMETHOD (SetCooperativeLevel) (HWND hwnd, DWORD dwFlags) {
+        return p->SetCooperativeLevel (hwnd, dwFlags);
+    }
+    STDMETHOD (SetDataFormat) (LPCDIDATAFORMAT lpdf) {
+        return p->SetDataFormat (lpdf);
+    }
+    STDMETHOD (SetEventNotification) (HANDLE hEvent) {
+        return p->SetEventNotification (hEvent);
+    }
+    STDMETHOD (SetProperty) (REFGUID rguidProp, LPCDIPROPHEADER pdiph) {
+        return p->SetProperty (rguidProp, pdiph);
+    }
+    STDMETHOD (Unacquire) () {
+        return p->Unacquire ();
+    }
+    STDMETHOD (WriteEffectToFile) (
+            LPCSTR lpszFileName, DWORD dwEntries, LPDIFILEEFFECT rgDiFileEft, DWORD dwFlags) {
+        return p->WriteEffectToFile (lpszFileName, dwEntries, rgDiFileEft, dwFlags);
+    }
 };
 
 //--------------------------------------------------------------------------------------------------
 
 /// @see https://docs.microsoft.com/en-us/previous-versions/windows/desktop/ee417799(v%3dvs.85)
 
-class direct_input : public IDirectInput8
+class direct_input : public IDirectInput8A
 {
-    IDirectInput8* p;
+    IDirectInput8A* p;
     ULONG refs;
 public:
-    explicit direct_input (IDirectInput8* np) : p (np), refs (1) { Ensures (p); }
+    explicit direct_input (IDirectInput8A* np) : p (np), refs (1) { Ensures (p); }
     virtual ~direct_input () {}
     // IUnknown:
     STDMETHOD (QueryInterface) (REFIID riid, void** ppvObj) {
@@ -98,47 +215,50 @@ public:
     }
     // IDirectInput8:
     STDMETHOD (EnumDevices) (
-            DWORD dwDevType, LPDIENUMDEVICESCALLBACK lpCallback, LPVOID pvRef, DWORD dwFlags) {
-		return p->EnumDevices (dwDevType, lpCallback, pvRef, dwFlags);
-	}
+            DWORD dwDevType, LPDIENUMDEVICESCALLBACKA lpCallback, LPVOID pvRef, DWORD dwFlags) {
+        return p->EnumDevices (dwDevType, lpCallback, pvRef, dwFlags);
+    }
     STDMETHOD (GetDeviceStatus) (REFGUID rguidInstance) {
-		return p->GetDeviceStatus (rguidInstance);
-	}
+        return p->GetDeviceStatus (rguidInstance);
+    }
     STDMETHOD (RunControlPanel) (HWND hwndOwner, DWORD dwFlags) {
-		return p->RunControlPanel (hwndOwner, dwFlags);
-	}
+        return p->RunControlPanel (hwndOwner, dwFlags);
+    }
     STDMETHOD (Initialize) (HINSTANCE hinst, DWORD dwVersion) {
-		return p->Initialize (hinst, dwVersion);
-	}
-    STDMETHOD (FindDevice) (REFGUID rguidClass, LPCTSTR ptszName, LPGUID pguidInstance) {
-		return p->FindDevice (rguidClass, ptszName, pguidInstance);
-	}
+        return p->Initialize (hinst, dwVersion);
+    }
+    STDMETHOD (FindDevice) (REFGUID rguidClass, LPCSTR ptszName, LPGUID pguidInstance) {
+        return p->FindDevice (rguidClass, ptszName, pguidInstance);
+    }
     STDMETHOD (EnumDevicesBySemantics) (
-            LPCTSTR ptszUserName, LPDIACTIONFORMAT lpdiActionFormat,
-            LPDIENUMDEVICESBYSEMANTICSCB lpCallback, LPVOID pvRef, DWORD dwFlags) {
-		return p->EnumDevicesBySemantics (
+            LPCSTR ptszUserName, LPDIACTIONFORMATA lpdiActionFormat,
+            LPDIENUMDEVICESBYSEMANTICSCBA lpCallback, LPVOID pvRef, DWORD dwFlags) {
+        return p->EnumDevicesBySemantics (
                 ptszUserName, lpdiActionFormat, lpCallback, pvRef, dwFlags);
-	}
+    }
     STDMETHOD (ConfigureDevices) (
-            LPDICONFIGUREDEVICESCALLBACK lpdiCallback, LPDICONFIGUREDEVICESPARAMS lpdiCDParams,
+            LPDICONFIGUREDEVICESCALLBACK lpdiCallback, LPDICONFIGUREDEVICESPARAMSA lpdiCDParams,
             DWORD dwFlags, LPVOID pvRefData) {
-		return p->ConfigureDevices (lpdiCallback, lpdiCDParams, dwFlags, pvRefData);
-	}
+        return p->ConfigureDevices (lpdiCallback, lpdiCDParams, dwFlags, pvRefData);
+    }
     STDMETHOD (CreateDevice) (
-            REFGUID rguid, LPDIRECTINPUTDEVICE* lplpDirectInputDevice, LPUNKNOWN pUnkOuter)
+            REFGUID rguid, IDirectInputDevice8A** lplpDirectInputDevice, LPUNKNOWN pUnkOuter)
     {
-	    if (rguid != GUID_SysKeyboard && rguid != GUID_SysMouse || !lplpDirectInputDevice)
-		{
-			return p->CreateDevice (rguid, lplpDirectInputDevice, pUnkOuter);
-		}
-		else
-		{
-			IDirectInputDevice8* orig = nullptr;
-			HRESULT hr = p->CreateDevice (rguid, &orig, pUnkOuter);
-			if (hr == DI_OK)
-                *lplpDirectInputDevice = new input_device (orig, rguid == GUID_SysKeyboard);
-			return hr;
-		}
+
+        if (rguid != guid_keyboard && rguid != guid_mouse)
+        {
+            return p->CreateDevice (rguid, lplpDirectInputDevice, pUnkOuter);
+        }
+        else
+        {
+            IDirectInputDevice8A* orig = nullptr;
+            HRESULT hr = p->CreateDevice (rguid, &orig, pUnkOuter);
+            if (hr == DI_OK)
+            {
+                *lplpDirectInputDevice = new input_device (orig, rguid == guid_keyboard);
+            }
+            return hr;
+        }
     }
 };
 
@@ -149,7 +269,13 @@ public:
 static HRESULT WINAPI
 input_create (HINSTANCE hinst, DWORD dwVersion, REFIID riidltf, LPVOID* ppvOut, LPUNKNOWN punkOuter)
 {
-    return di.input_create_orig (hinst, dwVersion, riidltf, ppvOut, punkOuter);
+    IDirectInput8A* orig;
+    auto hr = di.input_create_orig (hinst, dwVersion, riidltf, (LPVOID*) &orig, punkOuter);
+    if (hr == DI_OK)
+    {
+        *(IDirectInput8A**) ppvOut = new direct_input (orig);
+    }
+    return hr;
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -158,6 +284,7 @@ bool
 detour_dinput ()
 {
     Expects (sseh);
+    ssgui_error.clear ();
     if (!sseh->profile ("SSGUI"))
     {
         ssgui_error = __func__ + " profile "s + sseh_error ();

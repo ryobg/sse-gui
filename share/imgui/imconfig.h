@@ -13,13 +13,25 @@
 
 #pragma once
 
+#define GSL_THROW_ON_CONTRACT_VIOLATION
+#include <gsl/gsl_assert>
+
 // Missing in my MinGW
 #ifndef D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE
 #define D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE (16)
 #endif
 
+// Custom imgui.h prefix defines goes here, but suffixes goes in that file
+#define IMGUI_INCLUDE_IMGUI_USER_H
+
+// Pop the warning back at the end of imgui.h (i.e. in imgui_user.h)
+#if defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wstrict-overflow"
+#pragma GCC diagnostic push
+#endif
+
 //---- Define assertion handler. Defaults to calling assert().
-//#define IM_ASSERT(_EXPR)  MyAssert(_EXPR)
+#define IM_ASSERT(_EXPR)  GSL_CONTRACT_CHECK ("ImGui.assertion", _EXPR)
 //#define IM_ASSERT(_EXPR)  ((void)(_EXPR))     // Disable asserts
 
 //---- Define attributes of all API symbols declarations, e.g. for DLL under Windows.

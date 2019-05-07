@@ -86,6 +86,12 @@ struct render_t
     };
     std::vector<device_record> device_history;
     std::mutex device_mutex;
+
+    bool d3dcompile_failed;
+    HMODULE d3dcompile_library;
+    HRESULT (WINAPI *d3dcompile) (
+        LPCVOID, SIZE_T, LPCSTR, D3D_SHADER_MACRO*, ID3DInclude*, LPCSTR,
+        LPCSTR, UINT, UINT, ID3DBlob**, ID3DBlob*);
 };
 
 /// One and only one object
@@ -109,6 +115,8 @@ static void cleanup_dx ()
         ImGui::DestroyContext (std::exchange (dx.imgui_context, nullptr));
 
     if (dx.view) std::exchange (dx.view, nullptr)->Release ();
+
+    if (dx.d3dcompile_library) ::FreeLibrary (std::exchange (dx.d3dcompile_library, nullptr));
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -215,6 +223,8 @@ setup_imgui ()
 {
     bool do_cleanup = true;
     auto cleanup = gsl::finally ([&do_cleanup] { if (do_cleanup) cleanup_dx (); });
+
+    ssgui_error.clear ();
 
     HWND top_window = nullptr;
     ::EnumWindows (find_top_window_callback, (LPARAM) &top_window);
@@ -341,6 +351,7 @@ bool
 detour_create_device ()
 {
     Expects (sseh);
+    ssgui_error.clear ();
     if (!sseh->profile ("SSGUI"))
     {
         ssgui_error = __func__ + " profile "s + sseh_error ();
@@ -358,3 +369,47 @@ detour_create_device ()
 
 //--------------------------------------------------------------------------------------------------
 
+/// Avoid build time linking to a d3dcompiler library (as required by ImGUI). It is not very clear
+/// which verion an user will have.
+
+HRESULT WINAPI D3DCompile (
+        LPCVOID p1, SIZE_T p2, LPCSTR p3, D3D_SHADER_MACRO* p4, ID3DInclude* p5, LPCSTR p6,
+        LPCSTR p7, UINT p8, UINT p9, ID3DBlob** p10, ID3DBlob* p11)
+{
+    if (dx.d3dcompile_failed)
+        return TYPE_E_ELEMENTNOTFOUND;
+
+    if (!dx.d3dcompile)
+    {
+        ssgui_error.clear ();
+        std::string name;
+        HMODULE dll = nullptr;
+        for (int i = 50; i > 30 && !dll; --i)
+        {
+            name = "D3DCompiler_" + std::to_string (i) + ".dll";
+            dll = ::LoadLibraryA (name.c_str ());
+        }
+        if (!dll)
+        {
+            dx.d3dcompile_failed = true;
+            ssgui_error = __func__ + " unable to load d3dcompiler_XX.dll"s;
+            log () << ssgui_error << std::endl;
+            return TYPE_E_ELEMENTNOTFOUND;
+        }
+        dx.d3dcompile = (decltype (dx.d3dcompile)) ::GetProcAddress (dll, "D3DCompile");
+        if (!dx.d3dcompile)
+        {
+            ::FreeLibrary (dll);
+            dx.d3dcompile_failed = true;
+            ssgui_error = __func__ + " unable to find D3DCompile in "s + name;
+            log () << ssgui_error << std::endl;
+            return TYPE_E_ELEMENTNOTFOUND;
+        }
+        dx.d3dcompile_library = dll;
+        log () << "D3DCompile@" << name << " loaded." << std::endl;
+    }
+
+    return dx.d3dcompile (p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11);
+}
+
+//--------------------------------------------------------------------------------------------------
