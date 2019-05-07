@@ -28,9 +28,11 @@
 #include <sse-hooks/sse-hooks.h>
 #include <gsl/gsl_assert>
 
+#include <array>
 #include <string>
 #include <memory>
 #include <fstream>
+#include <algorithm>
 
 #include <windows.h>
 #include <dinput.h>
@@ -125,15 +127,8 @@ public:
     STDMETHOD (GetCapabilities) (LPDIDEVCAPS lpDIDevCaps) {
         return p->GetCapabilities (lpDIDevCaps);
     }
-    STDMETHOD (GetDeviceData) (
-            DWORD cbObjectData, LPDIDEVICEOBJECTDATA rgdod, LPDWORD pdwInOut, DWORD dwFlags) {
-        return p->GetDeviceData (cbObjectData, rgdod, pdwInOut, dwFlags);
-    }
     STDMETHOD (GetDeviceInfo) (LPDIDEVICEINSTANCEA pdidi) {
         return p->GetDeviceInfo (pdidi);
-    }
-    STDMETHOD (GetDeviceState) (DWORD cbData, LPVOID lpvData) {
-        return p->GetDeviceState (cbData, lpvData);
     }
     STDMETHOD (GetEffectInfo) (LPDIEFFECTINFOA pdei, REFGUID rguid) {
         return p->GetEffectInfo (pdei, rguid);
@@ -188,6 +183,29 @@ public:
     STDMETHOD (WriteEffectToFile) (
             LPCSTR lpszFileName, DWORD dwEntries, LPDIFILEEFFECT rgDiFileEft, DWORD dwFlags) {
         return p->WriteEffectToFile (lpszFileName, dwEntries, rgDiFileEft, dwFlags);
+    }
+
+    STDMETHOD (GetDeviceState) (DWORD cbData, LPVOID lpvData)
+    {
+        HRESULT hres;
+        if (kbd) // Seems to works though ignoring SetDataFormat/SetActionMap
+        {
+            constexpr DWORD N = 256;
+            std::array<std::uint8_t,  N> raw;
+            hres = p->GetDeviceState (N, raw.data ());
+            if (hres == DI_OK)
+                std::copy_n (raw.data (), std::min (N, cbData), (uint8_t*) lpvData);
+        }
+        else
+        {
+            hres = p->GetDeviceState (cbData, lpvData);
+        }
+        return hres;
+    }
+
+    STDMETHOD (GetDeviceData) (
+            DWORD cbObjectData, LPDIDEVICEOBJECTDATA rgdod, LPDWORD pdwInOut, DWORD dwFlags) {
+        return p->GetDeviceData (cbObjectData, rgdod, pdwInOut, dwFlags);
     }
 };
 
@@ -244,7 +262,6 @@ public:
     STDMETHOD (CreateDevice) (
             REFGUID rguid, IDirectInputDevice8A** lplpDirectInputDevice, LPUNKNOWN pUnkOuter)
     {
-
         if (rguid != guid_keyboard && rguid != guid_mouse)
         {
             return p->CreateDevice (rguid, lplpDirectInputDevice, pUnkOuter);

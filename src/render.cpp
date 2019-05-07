@@ -269,7 +269,6 @@ setup_imgui ()
     dx.imgui_context = ImGui::CreateContext ();
     ImGuiIO& io = ImGui::GetIO ();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    io.ImeWindowHandle = dx.window;
     ImGui::StyleColorsDark ();
     dx.imgui_win32 = ImGui_ImplWin32_Init (dx.window);
     dx.imgui_dx11 = ImGui_ImplDX11_Init (dx.device, dx.context);
