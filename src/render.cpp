@@ -60,6 +60,12 @@ extern std::string sseh_error ();
 /// Defined in skse.cpp
 extern std::unique_ptr<sseh_api> sseh;
 
+/// Defined in input.cpp
+extern bool keyboard_cooperative_level (bool background, bool nonexclusive);
+extern bool mouse_cooperative_level (bool background, bool nonexclusive);
+extern void keyboard_enable (bool enabled);
+extern void mouse_enable (bool enabled);
+
 /// All in one holder of DirectX & Co. fields
 struct render_t
 {
@@ -146,6 +152,22 @@ find_top_window_callback (HWND hwnd, LPARAM lParam)
 
     *reinterpret_cast<HWND*> (lParam) = hwnd;
     return false;
+}
+
+//--------------------------------------------------------------------------------------------------
+
+void
+mouse_callback (std::array<std::int32_t, 3> const& axes, std::array<bool, 8> const& keys)
+{
+
+}
+
+//--------------------------------------------------------------------------------------------------
+
+void
+keyboard_callback (std::array<bool, 256> const& keys)
+{
+
 }
 
 //--------------------------------------------------------------------------------------------------

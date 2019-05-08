@@ -54,12 +54,19 @@ extern std::string sseh_error ();
 /// Defined in skse.cpp
 extern std::unique_ptr<sseh_api> sseh;
 
+/// Defined in render.cpp - called on each successfull poll - one should be enough
+extern void mouse_callback (std::array<std::int32_t, 3> const&, std::array<bool, 8> const&);
+
+/// @see #mouse_callback()
+extern void keyboard_callback (std::array<bool, 256> const&);
+
 //--------------------------------------------------------------------------------------------------
 
 /// All in one holder of DirectInput & Co. fields
 struct input_t
 {
     HRESULT (WINAPI *input_create_orig) (HINSTANCE, DWORD, REFIID, LPVOID*, LPUNKNOWN);
+    HWND window;   ///< Persistent cooperative top-level window, should equal the ImGUI one.
 
     /// DInput buffered and unbuffered
     struct {
@@ -70,7 +77,7 @@ struct input_t
     /// Based on DIMOUSESTATE2
     struct {
         bool disabled;
-        std::int32_t x, y, z;
+        std::array<std::int32_t, 3> axis;
         std::array<bool, 8> keys;
         IDirectInputDevice8A* device;
     } mouse;
@@ -180,9 +187,6 @@ public:
             LPDIACTIONFORMATA lpdiActionFormat, LPCSTR lptszUserName, DWORD dwFlags) {
         return p->SetActionMap (lpdiActionFormat, lptszUserName, dwFlags);
     }
-    STDMETHOD (SetCooperativeLevel) (HWND hwnd, DWORD dwFlags) {
-        return p->SetCooperativeLevel (hwnd, dwFlags);
-    }
     STDMETHOD (SetDataFormat) (LPCDIDATAFORMAT lpdf) {
         return p->SetDataFormat (lpdf);
     }
@@ -200,6 +204,14 @@ public:
         return p->WriteEffectToFile (lpszFileName, dwEntries, rgDiFileEft, dwFlags);
     }
 
+    STDMETHOD (SetCooperativeLevel) (HWND hwnd, DWORD dwFlags)
+    {
+        HRESULT hres = p->SetCooperativeLevel (hwnd, dwFlags);
+        if (hres == DI_OK)
+            di.window = hwnd;
+        return hres;
+    }
+
     STDMETHOD (GetDeviceState) (DWORD cbData, LPVOID lpvData)
     {
         HRESULT hres = p->GetDeviceState (cbData, lpvData);
@@ -211,26 +223,30 @@ public:
         {
             Expects (cbData == 256);
             auto callee = reinterpret_cast<std::uint8_t*> (lpvData);
-            for (std::size_t i = 0; i < 256; ++i)
-            {
+
+            for (std::size_t i = 0; i < cbData; ++i)
                 di.keyboard.keys[i] = !!callee[i];
+
+            keyboard_callback (di.keyboard.keys);
+
+            for (std::size_t i = 0; i < cbData; ++i)
                 callee[i] *= !di.keyboard.disabled;
-            }
         }
         else
         {
             auto callee = *(DIMOUSESTATE2*) lpvData;
+
             for (std::size_t i = 0; i < di.mouse.keys.size (); ++i)
-            {
                 di.mouse.keys[i] = !!callee.rgbButtons[i];
+            di.mouse.axis = { callee.lX, callee.lY, callee.lZ };
+
+            mouse_callback (di.mouse.axis, di.mouse.keys);
+
+            for (std::size_t i = 0; i < di.mouse.keys.size (); ++i)
                 callee.rgbButtons[i] *= !di.mouse.disabled;
-            }
-            di.mouse.x = callee.lX;
-            di.mouse.y = callee.lY;
-            di.mouse.x = callee.lX;
             callee.lX *= !di.mouse.disabled;
             callee.lY *= !di.mouse.disabled;
-            callee.lX *= !di.mouse.disabled;
+            callee.lZ *= !di.mouse.disabled;
         }
 
         return hres;
@@ -243,13 +259,14 @@ public:
 
         if (Keyboard)
         {
-            std::array<std::uint8_t, 256> raw;
+            std::array<std::uint8_t, 256> raw = {};
             auto hres = p->GetDeviceState (raw.size (), raw.data ());
             if (hres == DI_OK)
             {
                 for (std::size_t i = 0; i < raw.size (); ++i)
                     di.keyboard.keys[i] = !!raw[i];
             }
+            keyboard_callback (di.keyboard.keys);
             flush = di.keyboard.disabled;
         }
         else
@@ -260,10 +277,9 @@ public:
             {
                 for (std::size_t i = 0; i < di.mouse.keys.size (); ++i)
                     di.mouse.keys[i] = !!mouse.rgbButtons[i];
-                di.mouse.x = mouse.lX;
-                di.mouse.y = mouse.lY;
-                di.mouse.x = mouse.lX;
+                di.mouse.axis = { mouse.lX, mouse.lY, mouse.lZ };
             }
+            mouse_callback (di.mouse.axis, di.mouse.keys);
             flush = di.mouse.disabled;
         }
 
@@ -387,6 +403,57 @@ detour_dinput ()
     }
     Ensures (di.input_create_orig);
     return true;
+}
+
+//--------------------------------------------------------------------------------------------------
+
+static bool
+cooperative_level (IDirectInputDevice8A* device, HWND hwnd, bool background, bool nonexclusive)
+{
+    ssgui_error.clear ();
+
+    DWORD flags =
+          (DISCL_BACKGROUND   * background  ) | (DISCL_FOREGROUND * !background  )
+        | (DISCL_NONEXCLUSIVE * nonexclusive) | (DISCL_EXCLUSIVE  * !nonexclusive);
+
+    HRESULT hres = device->SetCooperativeLevel (hwnd, flags);
+    if (hres != DI_OK)
+    {
+        ssgui_error = __func__ + " failed with HRESULT "s + std::to_string (hres);
+        return false;
+    }
+
+    return true;
+}
+
+//--------------------------------------------------------------------------------------------------
+
+bool
+keyboard_cooperative_level (bool background, bool nonexclusive)
+{
+    Expects (di.keyboard.device);
+    return cooperative_level (di.keyboard.device, di.window, background, nonexclusive);
+}
+
+bool
+mouse_cooperative_level (bool background, bool nonexclusive)
+{
+    Expects (di.mouse.device);
+    return cooperative_level (di.mouse.device, di.window, background, nonexclusive);
+}
+
+//--------------------------------------------------------------------------------------------------
+
+void
+keyboard_enable (bool enable)
+{
+    di.keyboard.disabled = !enable;
+}
+
+void
+mouse_enable (bool enable)
+{
+    di.mouse.disabled = !enable;
 }
 
 //--------------------------------------------------------------------------------------------------

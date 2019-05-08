@@ -130,6 +130,9 @@ static void handle_sseh_message (SKSEMessagingInterface::Message* m)
         log () << "Unable to detour DirectX. Bailing out." << std::endl;
     }
 
+    // SKSE hooks DInput after PostPostLoad and SSEH broadcasts during PostPostLoad
+    // hence its object will wrap this one, hence this one will filter the traffic for SKSE.
+    // Which should be fine, as it will enable control of capturing the input for the GUI.
     extern bool detour_dinput ();
     if (!detour_dinput ())
     {
