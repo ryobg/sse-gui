@@ -469,6 +469,10 @@ HRESULT WINAPI D3DCompile (
 
 //--------------------------------------------------------------------------------------------------
 
+#ifdef __GNUC__
+#pragma GCC diagnostic ignored "-Wunused-function"
+#endif
+
 static std::string
 window_message_text (unsigned msg)
 {
