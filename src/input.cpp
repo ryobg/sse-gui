@@ -71,7 +71,6 @@ struct input_t
     /// DInput buffered and unbuffered
     struct {
         bool disabled; ///< For the DInput callee (i.e. hijack)
-        IDirectInputDevice8A* device;
         std::array<bool, 256> keys;
     } keyboard;
     /// Based on DIMOUSESTATE2
@@ -79,7 +78,6 @@ struct input_t
         bool disabled;
         std::array<std::int32_t, 3> axis;
         std::array<bool, 8> keys;
-        IDirectInputDevice8A* device;
     } mouse;
 };
 
@@ -101,21 +99,20 @@ template<bool Keyboard>
 class input_device : public IDirectInputDevice8A
 {
     IDirectInputDevice8A* p;
-    ULONG refs;
 public:
-    explicit input_device (IDirectInputDevice8A* np)
-        : p (np), refs (1) { Ensures (p); }
+    explicit input_device (IDirectInputDevice8A* np) : p (np) { Ensures (p); }
     virtual ~input_device () {}
     // IUnknown:
     STDMETHOD (QueryInterface) (REFIID riid, void** ppvObj) {
         return p->QueryInterface (riid, ppvObj);
     }
     STDMETHOD_ (ULONG, AddRef) () {
-        return ++refs;
+        return p->AddRef ();
     }
     STDMETHOD_ (ULONG, Release) () {
-        if (--refs == 0) { p->Release (); delete this; }
-        return refs;
+        auto r = p->Release ();
+        if (!r); delete this;
+        return r;
     }
     // IDirectInputDevice8:
     STDMETHOD (Acquire) () {
@@ -206,6 +203,9 @@ public:
 
     STDMETHOD (SetCooperativeLevel) (HWND hwnd, DWORD dwFlags)
     {
+        // Allows window message loop for better GUI interraction.
+        dwFlags &= ~DISCL_EXCLUSIVE;
+        dwFlags |= DISCL_NONEXCLUSIVE;
         HRESULT hres = p->SetCooperativeLevel (hwnd, dwFlags);
         if (hres == DI_OK)
             di.window = hwnd;
@@ -229,24 +229,21 @@ public:
 
             keyboard_callback (di.keyboard.keys);
 
-            for (std::size_t i = 0; i < cbData; ++i)
-                callee[i] *= !di.keyboard.disabled;
+            if (di.mouse.disabled)
+                std::fill_n (callee, cbData, 0);
         }
         else
         {
-            auto callee = *(DIMOUSESTATE2*) lpvData;
+            auto callee = reinterpret_cast<DIMOUSESTATE2*> (lpvData);
 
             for (std::size_t i = 0; i < di.mouse.keys.size (); ++i)
-                di.mouse.keys[i] = !!callee.rgbButtons[i];
-            di.mouse.axis = { callee.lX, callee.lY, callee.lZ };
+                di.mouse.keys[i] = !!callee->rgbButtons[i];
+            di.mouse.axis = { callee->lX, callee->lY, callee->lZ };
 
             mouse_callback (di.mouse.axis, di.mouse.keys);
 
-            for (std::size_t i = 0; i < di.mouse.keys.size (); ++i)
-                callee.rgbButtons[i] *= !di.mouse.disabled;
-            callee.lX *= !di.mouse.disabled;
-            callee.lY *= !di.mouse.disabled;
-            callee.lZ *= !di.mouse.disabled;
+            if (di.mouse.disabled)
+                *callee = DIMOUSESTATE2 {};
         }
 
         return hres;
@@ -255,8 +252,6 @@ public:
     STDMETHOD (GetDeviceData) (
             DWORD cbObjectData, LPDIDEVICEOBJECTDATA rgdod, LPDWORD pdwInOut, DWORD dwFlags)
     {
-        bool flush = false;
-
         if (Keyboard)
         {
             std::array<std::uint8_t, 256> raw = {};
@@ -266,30 +261,18 @@ public:
                 for (std::size_t i = 0; i < raw.size (); ++i)
                     di.keyboard.keys[i] = !!raw[i];
             }
-            keyboard_callback (di.keyboard.keys);
-            flush = di.keyboard.disabled;
-        }
-        else
-        {
-            DIMOUSESTATE2 mouse;
-            auto hres = p->GetDeviceState (sizeof (mouse), (LPVOID) &mouse);
-            if (hres == DI_OK)
-            {
-                for (std::size_t i = 0; i < di.mouse.keys.size (); ++i)
-                    di.mouse.keys[i] = !!mouse.rgbButtons[i];
-                di.mouse.axis = { mouse.lX, mouse.lY, mouse.lZ };
-            }
-            mouse_callback (di.mouse.axis, di.mouse.keys);
-            flush = di.mouse.disabled;
-        }
 
-        if (flush)
-        {
-            DWORD dwItems = INFINITE;
-            auto hres = p->GetDeviceData (sizeof (DIDEVICEOBJECTDATA), nullptr, &dwItems, 0);
-            *pdwInOut = 0;
-            return hres;
+            keyboard_callback (di.keyboard.keys);
+
+            if (di.keyboard.disabled)
+            {
+                DWORD dwItems = INFINITE;
+                hres = p->GetDeviceData (sizeof (DIDEVICEOBJECTDATA), nullptr, &dwItems, 0);
+                *pdwInOut = 0;
+                return hres;
+            }
         }
+        // Mouse case looks unused
 
         return p->GetDeviceData (cbObjectData, rgdod, pdwInOut, dwFlags);
     }
@@ -302,20 +285,20 @@ public:
 class direct_input : public IDirectInput8A
 {
     IDirectInput8A* p;
-    ULONG refs;
 public:
-    explicit direct_input (IDirectInput8A* np) : p (np), refs (1) { Ensures (p); }
+    explicit direct_input (IDirectInput8A* np) : p (np) { Ensures (p); }
     virtual ~direct_input () {}
     // IUnknown:
     STDMETHOD (QueryInterface) (REFIID riid, void** ppvObj) {
         return p->QueryInterface (riid, ppvObj);
     }
     STDMETHOD_ (ULONG, AddRef) () {
-        return ++refs;
+        return p->AddRef ();
     }
     STDMETHOD_ (ULONG, Release) () {
-        if (--refs == 0) { p->Release (); delete this; }
-        return refs;
+        auto r = p->Release ();
+        if (!r); delete this;
+        return r;
     }
     // IDirectInput8:
     STDMETHOD (EnumDevices) (
@@ -359,8 +342,8 @@ public:
             if (hr == DI_OK)
             {
                 if (rguid == guid_keyboard)
-                     *lplpDirectInputDevice = di.keyboard.device = new input_device<true > (orig);
-                else *lplpDirectInputDevice = di.mouse.device    = new input_device<false> (orig);
+                     *lplpDirectInputDevice = new input_device<true > (orig);
+                else *lplpDirectInputDevice = new input_device<false> (orig);
             }
             return hr;
         }
@@ -403,43 +386,6 @@ detour_dinput ()
     }
     Ensures (di.input_create_orig);
     return true;
-}
-
-//--------------------------------------------------------------------------------------------------
-
-static bool
-cooperative_level (IDirectInputDevice8A* device, HWND hwnd, bool background, bool nonexclusive)
-{
-    ssgui_error.clear ();
-
-    DWORD flags =
-          (DISCL_BACKGROUND   * background  ) | (DISCL_FOREGROUND * !background  )
-        | (DISCL_NONEXCLUSIVE * nonexclusive) | (DISCL_EXCLUSIVE  * !nonexclusive);
-
-    HRESULT hres = device->SetCooperativeLevel (hwnd, flags);
-    if (hres != DI_OK)
-    {
-        ssgui_error = __func__ + " failed with HRESULT "s + std::to_string (hres);
-        return false;
-    }
-
-    return true;
-}
-
-//--------------------------------------------------------------------------------------------------
-
-bool
-keyboard_cooperative_level (bool background, bool nonexclusive)
-{
-    Expects (di.keyboard.device);
-    return cooperative_level (di.keyboard.device, di.window, background, nonexclusive);
-}
-
-bool
-mouse_cooperative_level (bool background, bool nonexclusive)
-{
-    Expects (di.mouse.device);
-    return cooperative_level (di.mouse.device, di.window, background, nonexclusive);
 }
 
 //--------------------------------------------------------------------------------------------------

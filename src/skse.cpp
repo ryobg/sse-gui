@@ -167,7 +167,6 @@ static void handle_skse_message (SKSEMessagingInterface::Message* m)
         log () << "Unable to setup ImGUI. Bailing out." << std::endl;
         return;
     }
-    log () << "Initialized." << std::endl;
 
     int api;
     ssgui_version (&api, nullptr, nullptr, nullptr);
