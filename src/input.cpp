@@ -35,6 +35,7 @@
 #include <algorithm>
 
 #include <windows.h>
+#define DIRECTINPUT_VERSION 0x0800
 #include <dinput.h>
 
 //--------------------------------------------------------------------------------------------------
@@ -59,6 +60,20 @@ extern std::unique_ptr<sseh_api> sseh;
 struct input_t
 {
     HRESULT (WINAPI *input_create_orig) (HINSTANCE, DWORD, REFIID, LPVOID*, LPUNKNOWN);
+
+    /// DInput buffered and unbuffered
+    struct {
+        bool disabled; ///< For the DInput callee (i.e. hijack)
+        IDirectInputDevice8A* device;
+        std::array<bool, 256> keys;
+    } keyboard;
+    /// Based on DIMOUSESTATE2
+    struct {
+        bool disabled;
+        std::int32_t x, y, z;
+        std::array<bool, 8> keys;
+        IDirectInputDevice8A* device;
+    } mouse;
 };
 
 /// One and only one object
@@ -75,14 +90,14 @@ static const GUID guid_keyboard = {
 
 /// @see https://docs.microsoft.com/en-us/previous-versions/windows/desktop/ee417816(v%3dvs.85)
 
+template<bool Keyboard>
 class input_device : public IDirectInputDevice8A
 {
     IDirectInputDevice8A* p;
     ULONG refs;
-    bool kbd;
 public:
-    explicit input_device (IDirectInputDevice8A* np, bool keyboard)
-        : p (np), refs (1), kbd (keyboard) { Ensures (p); }
+    explicit input_device (IDirectInputDevice8A* np)
+        : p (np), refs (1) { Ensures (p); }
     virtual ~input_device () {}
     // IUnknown:
     STDMETHOD (QueryInterface) (REFIID riid, void** ppvObj) {
@@ -187,24 +202,79 @@ public:
 
     STDMETHOD (GetDeviceState) (DWORD cbData, LPVOID lpvData)
     {
-        HRESULT hres;
-        if (kbd) // Seems to works though ignoring SetDataFormat/SetActionMap
+        HRESULT hres = p->GetDeviceState (cbData, lpvData);
+        if (hres != DI_OK)
+            return hres;
+
+        // Ignores SetDataFormat/SetActionMap
+        if (Keyboard)
         {
-            constexpr DWORD N = 256;
-            std::array<std::uint8_t,  N> raw;
-            hres = p->GetDeviceState (N, raw.data ());
-            if (hres == DI_OK)
-                std::copy_n (raw.data (), std::min (N, cbData), (uint8_t*) lpvData);
+            Expects (cbData == 256);
+            auto callee = reinterpret_cast<std::uint8_t*> (lpvData);
+            for (std::size_t i = 0; i < 256; ++i)
+            {
+                di.keyboard.keys[i] = !!callee[i];
+                callee[i] *= !di.keyboard.disabled;
+            }
         }
         else
         {
-            hres = p->GetDeviceState (cbData, lpvData);
+            auto callee = *(DIMOUSESTATE2*) lpvData;
+            for (std::size_t i = 0; i < di.mouse.keys.size (); ++i)
+            {
+                di.mouse.keys[i] = !!callee.rgbButtons[i];
+                callee.rgbButtons[i] *= !di.mouse.disabled;
+            }
+            di.mouse.x = callee.lX;
+            di.mouse.y = callee.lY;
+            di.mouse.x = callee.lX;
+            callee.lX *= !di.mouse.disabled;
+            callee.lY *= !di.mouse.disabled;
+            callee.lX *= !di.mouse.disabled;
         }
+
         return hres;
     }
 
     STDMETHOD (GetDeviceData) (
-            DWORD cbObjectData, LPDIDEVICEOBJECTDATA rgdod, LPDWORD pdwInOut, DWORD dwFlags) {
+            DWORD cbObjectData, LPDIDEVICEOBJECTDATA rgdod, LPDWORD pdwInOut, DWORD dwFlags)
+    {
+        bool flush = false;
+
+        if (Keyboard)
+        {
+            std::array<std::uint8_t, 256> raw;
+            auto hres = p->GetDeviceState (raw.size (), raw.data ());
+            if (hres == DI_OK)
+            {
+                for (std::size_t i = 0; i < raw.size (); ++i)
+                    di.keyboard.keys[i] = !!raw[i];
+            }
+            flush = di.keyboard.disabled;
+        }
+        else
+        {
+            DIMOUSESTATE2 mouse;
+            auto hres = p->GetDeviceState (sizeof (mouse), (LPVOID) &mouse);
+            if (hres == DI_OK)
+            {
+                for (std::size_t i = 0; i < di.mouse.keys.size (); ++i)
+                    di.mouse.keys[i] = !!mouse.rgbButtons[i];
+                di.mouse.x = mouse.lX;
+                di.mouse.y = mouse.lY;
+                di.mouse.x = mouse.lX;
+            }
+            flush = di.mouse.disabled;
+        }
+
+        if (flush)
+        {
+            DWORD dwItems = INFINITE;
+            auto hres = p->GetDeviceData (sizeof (DIDEVICEOBJECTDATA), nullptr, &dwItems, 0);
+            *pdwInOut = 0;
+            return hres;
+        }
+
         return p->GetDeviceData (cbObjectData, rgdod, pdwInOut, dwFlags);
     }
 };
@@ -272,7 +342,9 @@ public:
             HRESULT hr = p->CreateDevice (rguid, &orig, pUnkOuter);
             if (hr == DI_OK)
             {
-                *lplpDirectInputDevice = new input_device (orig, rguid == guid_keyboard);
+                if (rguid == guid_keyboard)
+                     *lplpDirectInputDevice = di.keyboard.device = new input_device<true > (orig);
+                else *lplpDirectInputDevice = di.mouse.device    = new input_device<false> (orig);
             }
             return hr;
         }
