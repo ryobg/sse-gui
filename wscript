@@ -4,7 +4,7 @@
 @file wscript
 @brief This is the main Waf based build sytem file for SSGUI
 
-This file is part of SSE Hooks project (aka SSGUI).
+This file is part of SSE Graphical User Interface project (aka SSGUI).
 
   SSGUI is free software: you can redistribute it and/or modify it
   under the terms of the GNU Lesser General Public License as published
