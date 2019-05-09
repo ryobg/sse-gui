@@ -27,6 +27,7 @@
  */
 
 #include <sse-gui/sse-gui.h>
+#include <utils/winutils.hpp>
 
 #include <cstring>
 #include <string>
@@ -46,44 +47,6 @@ extern std::ofstream& log ();
 
 /// [shared] Supports SSGUI specific errors in a manner of #GetLastError() and #FormatMessage()
 std::string ssgui_error;
-
-//--------------------------------------------------------------------------------------------------
-
-static_assert (std::is_same<std::wstring::value_type, TCHAR>::value, "Not an _UNICODE build.");
-
-/// Safe convert from UTF-16 (Windows) encoding to UTF-8 (Skyrim).
-
-static bool
-utf16_to_utf8 (wchar_t const* wide, std::string& out)
-{
-    ssgui_error.clear ();
-    if (!wide) return true;
-    int wide_size = static_cast<int> (std::wcslen (wide));
-    if (wide_size < 1) return true;
-    int sz = ::WideCharToMultiByte (CP_UTF8, 0, wide, wide_size, NULL, 0, NULL, NULL);
-    if (sz < 1) return false;
-    out.resize (sz, 0);
-    ::WideCharToMultiByte (CP_UTF8, 0, wide, wide_size, &out[0], sz, NULL, NULL);
-    return true;
-}
-
-//--------------------------------------------------------------------------------------------------
-
-/// Helper function to upload to API callers a managed range of bytes
-
-static void
-copy_string (std::string const& src, std::size_t* n, char* dst)
-{
-    if (!n)
-        return;
-    if (dst)
-    {
-        if (*n > 0)
-            *std::copy_n (src.cbegin (), std::min (*n-1, src.size ()), dst) = '\0';
-        else *dst = 0;
-    }
-    *n = src.size () + 1;
-}
 
 //--------------------------------------------------------------------------------------------------
 
@@ -123,21 +86,7 @@ ssgui_last_error (size_t* size, char* message)
         return;
     }
 
-    LPTSTR buff = nullptr;
-    FormatMessage (
-        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-        nullptr, err, MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT),
-        (LPTSTR) &buff, 0, nullptr);
-
-    std::string m;
-    if (!utf16_to_utf8 (buff, m))
-    {
-        ::LocalFree (buff);
-        return;
-    }
-    ::LocalFree (buff);
-
-    copy_string (m, size, message);
+    copy_string (format_utf8message (err), size, message);
 }
 
 //--------------------------------------------------------------------------------------------------

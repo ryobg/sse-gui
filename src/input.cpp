@@ -26,7 +26,7 @@
  */
 
 #include <sse-hooks/sse-hooks.h>
-#include <gsl/gsl_assert>
+#include <gsl/span>
 
 #include <array>
 #include <string>
@@ -55,10 +55,10 @@ extern std::string sseh_error ();
 extern std::unique_ptr<sseh_api> sseh;
 
 /// Defined in render.cpp - called on each successfull poll - one should be enough
-extern void mouse_callback (std::array<std::int32_t, 3> const&, std::array<bool, 8> const&);
+extern void mouse_callback (std::array<std::int32_t, 3> const&, gsl::span<std::uint8_t, 8> const&);
 
 /// @see #mouse_callback()
-extern void keyboard_callback (std::array<bool, 256> const&);
+extern void keyboard_callback (gsl::span<std::uint8_t, 256> const&);
 
 //--------------------------------------------------------------------------------------------------
 
@@ -111,7 +111,7 @@ public:
     }
     STDMETHOD_ (ULONG, Release) () {
         auto r = p->Release ();
-        if (!r); delete this;
+        if (!r) delete this;
         return r;
     }
     // IDirectInputDevice8:
@@ -223,11 +223,7 @@ public:
         {
             Expects (cbData == 256);
             auto callee = reinterpret_cast<std::uint8_t*> (lpvData);
-
-            for (std::size_t i = 0; i < cbData; ++i)
-                di.keyboard.keys[i] = !!callee[i];
-
-            keyboard_callback (di.keyboard.keys);
+            keyboard_callback (gsl::make_span (callee, cbData));
 
             if (di.mouse.disabled)
                 std::fill_n (callee, cbData, 0);
@@ -235,12 +231,7 @@ public:
         else
         {
             auto callee = reinterpret_cast<DIMOUSESTATE2*> (lpvData);
-
-            for (std::size_t i = 0; i < di.mouse.keys.size (); ++i)
-                di.mouse.keys[i] = !!callee->rgbButtons[i];
-            di.mouse.axis = { callee->lX, callee->lY, callee->lZ };
-
-            mouse_callback (di.mouse.axis, di.mouse.keys);
+            mouse_callback ({ callee->lX, callee->lY, callee->lZ }, gsl::make_span (callee->rgbButtons, 8));
 
             if (di.mouse.disabled)
                 *callee = DIMOUSESTATE2 {};
@@ -258,11 +249,8 @@ public:
             auto hres = p->GetDeviceState (raw.size (), raw.data ());
             if (hres == DI_OK)
             {
-                for (std::size_t i = 0; i < raw.size (); ++i)
-                    di.keyboard.keys[i] = !!raw[i];
+                keyboard_callback (raw);
             }
-
-            keyboard_callback (di.keyboard.keys);
 
             if (di.keyboard.disabled)
             {
@@ -297,7 +285,7 @@ public:
     }
     STDMETHOD_ (ULONG, Release) () {
         auto r = p->Release ();
-        if (!r); delete this;
+        if (!r) delete this;
         return r;
     }
     // IDirectInput8:

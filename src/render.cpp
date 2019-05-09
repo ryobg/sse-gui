@@ -31,7 +31,7 @@
 #include <imgui/imgui_impl_win32.h>
 #include <imgui/imgui_impl_dx11.h>
 #include <gsl/gsl_util>
-#include <gsl/gsl_assert>
+#include <gsl/span>
 
 #include <string>
 #include <memory>
@@ -163,7 +163,7 @@ find_top_window_callback (HWND hwnd, LPARAM lParam)
 //--------------------------------------------------------------------------------------------------
 
 void
-mouse_callback (std::array<std::int32_t, 3> const& axes, std::array<bool, 8> const& keys)
+mouse_callback (std::array<std::int32_t, 3> const& axes, gsl::span<std::uint8_t, 8> const& keys)
 {
     if (dx.disable_dinput)
     {
@@ -177,7 +177,7 @@ mouse_callback (std::array<std::int32_t, 3> const& axes, std::array<bool, 8> con
 //--------------------------------------------------------------------------------------------------
 
 void
-keyboard_callback (std::array<bool, 256> const& keys)
+keyboard_callback (gsl::span<std::uint8_t, 256> const& keys)
 {
     if (std::exchange (dx.disable_dinput_key_pressed, keys[DIK_INSERT]) && !keys[DIK_INSERT])
     {
