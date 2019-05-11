@@ -3,20 +3,20 @@
  * @brief Implementing the main test driver
  * @internal
  *
- * This file is part of SSE Hooks project (aka SSGUI).
+ * This file is part of SSE Hooks project (aka SSEGUI).
  *
- *   SSGUI is free software: you can redistribute it and/or modify it
+ *   SSEGUI is free software: you can redistribute it and/or modify it
  *   under the terms of the GNU Lesser General Public License as published
  *   by the Free Software Foundation, either version 3 of the License, or
  *   (at your option) any later version.
  *
- *   SSGUI is distributed in the hope that it will be useful,
+ *   SSEGUI is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *   GNU Lesser General Public License for more details.
  *
  *   You should have received a copy of the GNU Lesser General Public
- *   License along with SSGUI. If not, see <http://www.gnu.org/licenses/>.
+ *   License along with SSEGUI. If not, see <http://www.gnu.org/licenses/>.
  *
  * @endinternal
  *
@@ -31,17 +31,17 @@
 //--------------------------------------------------------------------------------------------------
 
 /// Test whether we will crash with nullptr arguments
-bool test_ssgui_version ()
+bool test_ssegui_version ()
 {
     int a, m, i;
     const char* b;
-    ssgui_version (nullptr, nullptr, nullptr, nullptr);
-    ssgui_version (&a, nullptr, nullptr, nullptr);
-    ssgui_version (&a, &m, nullptr, nullptr);
-    ssgui_version (&a, &a, &a, nullptr);
-    ssgui_version (nullptr, &m, &m, &b);
+    ssegui_version (nullptr, nullptr, nullptr, nullptr);
+    ssegui_version (&a, nullptr, nullptr, nullptr);
+    ssegui_version (&a, &m, nullptr, nullptr);
+    ssegui_version (&a, &a, &a, nullptr);
+    ssegui_version (nullptr, &m, &m, &b);
     a = m = i = -1; b = nullptr;
-    ssgui_version (&a, &m, &i, &b);
+    ssegui_version (&a, &m, &i, &b);
     return a >= 0 && m >= 0 && i >= 0 && b;
 }
 
@@ -50,7 +50,7 @@ bool test_ssgui_version ()
 int main ()
 {
     int ret = 0;
-    ret += test_ssgui_version ();
+    ret += test_ssegui_version ();
     return ret;
 }
 

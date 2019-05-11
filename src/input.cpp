@@ -2,20 +2,20 @@
  * @file input.cpp
  * @internal
  *
- * This file is part of SSE Hooks project (aka SSGUI).
+ * This file is part of SSE Hooks project (aka SSEGUI).
  *
- *   SSGUI is free software: you can redistribute it and/or modify it
+ *   SSEGUI is free software: you can redistribute it and/or modify it
  *   under the terms of the GNU Lesser General Public License as published
  *   by the Free Software Foundation, either version 3 of the License, or
  *   (at your option) any later version.
  *
- *   SSGUI is distributed in the hope that it will be useful,
+ *   SSEGUI is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *   GNU Lesser General Public License for more details.
  *
  *   You should have received a copy of the GNU Lesser General Public
- *   License along with SSGUI. If not, see <http://www.gnu.org/licenses/>.
+ *   License along with SSEGUI. If not, see <http://www.gnu.org/licenses/>.
  *
  * @endinternal
  *
@@ -31,8 +31,8 @@
 #include <array>
 #include <string>
 #include <memory>
-#include <fstream>
 #include <algorithm>
+#include <functional>
 
 #include <windows.h>
 #define DIRECTINPUT_VERSION 0x0800
@@ -42,23 +42,14 @@
 
 using namespace std::string_literals;
 
-/// Opened from within skse.cpp
-extern std::ofstream& log ();
-
 /// Defined in sse-gui.cpp
-extern std::string ssgui_error;
+extern std::string ssegui_error;
 
 /// Defined in sse-gui.cpp
 extern std::string sseh_error ();
 
 /// Defined in skse.cpp
 extern std::unique_ptr<sseh_api> sseh;
-
-/// Defined in render.cpp - called on each successfull poll - one should be enough
-extern void mouse_callback (std::array<std::int32_t, 3> const&, gsl::span<std::uint8_t, 8> const&);
-
-/// @see #mouse_callback()
-extern void keyboard_callback (gsl::span<std::uint8_t, 256> const&);
 
 //--------------------------------------------------------------------------------------------------
 
@@ -71,14 +62,14 @@ struct input_t
     /// DInput buffered and unbuffered
     struct {
         bool disabled; ///< For the DInput callee (i.e. hijack)
-        std::array<bool, 256> keys;
     } keyboard;
     /// Based on DIMOUSESTATE2
     struct {
         bool disabled;
-        std::array<std::int32_t, 3> axis;
-        std::array<bool, 8> keys;
     } mouse;
+
+    bool disable_dinput_key_pressed;
+    unsigned disable_dinput_key;
 };
 
 /// One and only one object
@@ -90,6 +81,26 @@ static const GUID guid_mouse    = {
 /// Saves on linking to a library
 static const GUID guid_keyboard = {
     0x6F1D2B61, 0xD5A0, 0x11CF, { 0xBF, 0xC7, 0x44, 0x45, 0x53, 0x54, 0x00, 0x00 }};
+
+//--------------------------------------------------------------------------------------------------
+
+static void
+mouse_callback (std::array<std::int32_t, 3> const& axes, gsl::span<std::uint8_t, 8> const& keys)
+{
+}
+
+//--------------------------------------------------------------------------------------------------
+
+static void
+keyboard_callback (gsl::span<std::uint8_t, 256> const& keys)
+{
+    auto const& disable = keys[di.disable_dinput_key];
+    if (std::exchange (di.disable_dinput_key_pressed, disable) && !disable)
+    {
+        di.mouse.disabled = !di.mouse.disabled;
+        di.keyboard.disabled = !di.keyboard.disabled;
+    }
+}
 
 //--------------------------------------------------------------------------------------------------
 
@@ -230,8 +241,13 @@ public:
         }
         else
         {
+            Expects (cbData == sizeof (DIMOUSESTATE2));
             auto callee = reinterpret_cast<DIMOUSESTATE2*> (lpvData);
-            mouse_callback ({ callee->lX, callee->lY, callee->lZ }, gsl::make_span (callee->rgbButtons, 8));
+            static_assert (sizeof (callee->rgbButtons) / sizeof (callee->rgbButtons[0]) == 8, "!");
+
+            mouse_callback (
+                    { callee->lX, callee->lY, callee->lZ },
+                    gsl::make_span (callee->rgbButtons, 8));
 
             if (di.mouse.disabled)
                 *callee = DIMOUSESTATE2 {};
@@ -360,16 +376,16 @@ bool
 detour_dinput ()
 {
     Expects (sseh);
-    ssgui_error.clear ();
-    if (!sseh->profile ("SSGUI"))
+    ssegui_error.clear ();
+    if (!sseh->profile ("SSEGUI"))
     {
-        ssgui_error = __func__ + " profile "s + sseh_error ();
+        ssegui_error = __func__ + " profile "s + sseh_error ();
         return false;
     }
     if (!sseh->detour ("DirectInput8Create@dinput8.dll",
                 (void*) &input_create, (void**) &di.input_create_orig))
     {
-        ssgui_error = __func__ + " "s + sseh_error ();
+        ssegui_error = __func__ + " "s + sseh_error ();
         return false;
     }
     Ensures (di.input_create_orig);
@@ -378,16 +394,23 @@ detour_dinput ()
 
 //--------------------------------------------------------------------------------------------------
 
-void
-keyboard_enable (bool enable)
+bool
+keyboard_enable (bool* optional)
 {
-    di.keyboard.disabled = !enable;
+    return !std::exchange (di.keyboard.disabled, optional ? !*optional : di.keyboard.disabled);
 }
 
-void
-mouse_enable (bool enable)
+bool
+mouse_enable (bool* optional)
 {
-    di.mouse.disabled = !enable;
+    return !std::exchange (di.mouse.disabled, optional ? !*optional : di.mouse.disabled);
+}
+
+unsigned
+dinput_disable_key (unsigned* optional)
+{
+    Expects (!optional || *optional < 256);
+    return std::exchange (di.disable_dinput_key, optional ? *optional : di.disable_dinput_key);
 }
 
 //--------------------------------------------------------------------------------------------------

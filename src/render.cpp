@@ -2,20 +2,20 @@
  * @file render.cpp
  * @internal
  *
- * This file is part of SSE Hooks project (aka SSGUI).
+ * This file is part of SSE Hooks project (aka SSEGUI).
  *
- *   SSGUI is free software: you can redistribute it and/or modify it
+ *   SSEGUI is free software: you can redistribute it and/or modify it
  *   under the terms of the GNU Lesser General Public License as published
  *   by the Free Software Foundation, either version 3 of the License, or
  *   (at your option) any later version.
  *
- *   SSGUI is distributed in the hope that it will be useful,
+ *   SSEGUI is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *   GNU Lesser General Public License for more details.
  *
  *   You should have received a copy of the GNU Lesser General Public
- *   License along with SSGUI. If not, see <http://www.gnu.org/licenses/>.
+ *   License along with SSEGUI. If not, see <http://www.gnu.org/licenses/>.
  *
  * @endinternal
  *
@@ -27,18 +27,15 @@
 
 #include <sse-gui/sse-gui.h>
 #include <sse-hooks/sse-hooks.h>
-#include <imgui/imgui.h>
-#include <imgui/imgui_impl_win32.h>
-#include <imgui/imgui_impl_dx11.h>
 #include <gsl/gsl_util>
 #include <gsl/span>
 
 #include <string>
 #include <memory>
 #include <vector>
+#include <map>
 #include <algorithm>
 #include <fstream>
-#include <mutex>
 
 #include <windows.h>
 #include <dwmapi.h>
@@ -54,7 +51,7 @@ using namespace std::string_literals;
 extern std::ofstream& log ();
 
 /// Defined in sse-gui.cpp
-extern std::string ssgui_error;
+extern std::string ssegui_error;
 
 /// Defined in sse-gui.cpp
 extern std::string sseh_error ();
@@ -62,12 +59,8 @@ extern std::string sseh_error ();
 /// Defined in skse.cpp
 extern std::unique_ptr<sseh_api> sseh;
 
-/// Defined in input.cpp
-extern void keyboard_enable (bool enabled);
-extern void mouse_enable (bool enabled);
-
 /// Debug helper
-static std::string window_message_text (unsigned msg);
+static const char* window_message_text (unsigned msg);
 
 /// All in one holder of DirectX & Co. fields
 struct render_t
@@ -75,18 +68,12 @@ struct render_t
     ID3D11Device*           device;
     ID3D11DeviceContext*    context;
     IDXGISwapChain*         chain;
-    ID3D11RenderTargetView* view;
     HWND                    window;
     LRESULT (CALLBACK *window_proc_orig) (HWND, UINT, WPARAM, LPARAM);
     HRESULT (WINAPI *chain_present_orig) (IDXGISwapChain*, UINT, UINT);
 
-    ImGuiContext* imgui_context;
-    bool imgui_win32;
-    bool imgui_dx11;
-    bool disable_dinput;
-    bool disable_dinput_key_pressed;
-
     PFN_D3D11_CREATE_DEVICE_AND_SWAP_CHAIN create_device_orig;
+
     struct device_record
     {
         IDXGISwapChain* chain;
@@ -95,51 +82,15 @@ struct render_t
         HWND window;
     };
     std::vector<device_record> device_history;
-    std::mutex device_mutex;
 
-    bool d3dcompile_failed;
-    HMODULE d3dcompile_library;
-    HRESULT (WINAPI *d3dcompile) (
-        LPCVOID, SIZE_T, LPCSTR, D3D_SHADER_MACRO*, ID3DInclude*, LPCSTR,
-        LPCSTR, UINT, UINT, ID3DBlob**, ID3DBlob*);
+    std::vector<void(SSEGUI_CCONV*)(IDXGISwapChain*,UINT,UINT)> render_listeners;
+    std::vector<LRESULT(SSEGUI_CCONV*)(HWND,UINT,WPARAM,LPARAM)> message_listeners;
+    bool enable_rendering;
+    bool enable_messaging;
 };
 
 /// One and only one object
 static render_t dx = {};
-
-//--------------------------------------------------------------------------------------------------
-
-static void cleanup_dx ()
-{
-    if (dx.imgui_dx11)
-    {
-         ImGui_ImplDX11_Shutdown ();
-         dx.imgui_dx11 = false;
-    }
-    if (dx.imgui_win32)
-    {
-         ImGui_ImplWin32_Shutdown ();
-         dx.imgui_win32 = false;
-    }
-    if (dx.imgui_context)
-        ImGui::DestroyContext (std::exchange (dx.imgui_context, nullptr));
-
-    if (dx.view) std::exchange (dx.view, nullptr)->Release ();
-
-    if (dx.d3dcompile_library) ::FreeLibrary (std::exchange (dx.d3dcompile_library, nullptr));
-}
-
-//--------------------------------------------------------------------------------------------------
-
-//--------------------------------------------------------------------------------------------------
-
-static void create_dx_view ()
-{
-    ID3D11Texture2D* back = nullptr;
-    dx.chain->GetBuffer (0, IID_PPV_ARGS (&back));
-    dx.device->CreateRenderTargetView (back, NULL, &dx.view);
-    back->Release();
-}
 
 //--------------------------------------------------------------------------------------------------
 
@@ -162,55 +113,39 @@ find_top_window_callback (HWND hwnd, LPARAM lParam)
 
 //--------------------------------------------------------------------------------------------------
 
-void
-mouse_callback (std::array<std::int32_t, 3> const& axes, gsl::span<std::uint8_t, 8> const& keys)
-{
-    if (dx.disable_dinput)
-    {
-        auto& trg = ImGui::GetIO ().MouseDown;
-        std::copy_n (keys.cbegin (), 5, trg);
-        static_assert ((sizeof (trg) / sizeof (trg[0])) == 5, "Fix");
-        // TODO: ImGUI wndproc manages hwnd capture/release on mouse click
-    }
-}
+/*
+   Some of the detected messages when dinput is exclusive (default behaviour):
 
-//--------------------------------------------------------------------------------------------------
+   WM_WINDOWPOSCHANGING, WM_NCCALCSIZE, WM_NCPAINT, WM_ERASEBKGND, WM_WINDOWPOSCHANGED,
+   WM_NCACTIVATE, WM_STYLECHANGING, WM_STYLECHANGED, 49377, WM_SYNCPAINT, WM_USER, WM_NCHITTEST,
+   WM_SETCURSOR, WM_PAINT, WM_GETICON, WM_ACTIVATE, WM_KILLFOCUS, WM_IME_SETCONTEXT,
+   WM_IME_NOTIFY, WM_GETTEXT, WM_ACTIVATEAPP, WM_QUERYOPEN, WM_SETFOCUS, WM_SYSCOMMAND,
+   WM_GETMINMAXINFO, 144, WM_DESTROY, WM_NCDESTROY
 
-void
-keyboard_callback (gsl::span<std::uint8_t, 256> const& keys)
-{
-    if (std::exchange (dx.disable_dinput_key_pressed, keys[DIK_INSERT]) && !keys[DIK_INSERT])
-    {
-        dx.disable_dinput = !dx.disable_dinput;
-        mouse_enable (!dx.disable_dinput);
-        keyboard_enable (!dx.disable_dinput);
-        ImGui::GetIO ().MouseDrawCursor = dx.disable_dinput;
-    }
-}
-
-//--------------------------------------------------------------------------------------------------
+   The ones we block are the one found when dinput is switched to non exclusive mode.
+   Plus the ones for the mouse, which for some reason are not received, guess they should be
+   simulated (@file input.cpp).
+*/
 
 static LRESULT CALLBACK
 window_proc (HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-    LRESULT ret = 0;
-    if (dx.disable_dinput)
-    {
-        extern LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
-        ret = ImGui_ImplWin32_WndProcHandler (hWnd,  msg, wParam, lParam);
-    }
+    if (dx.enable_messaging)
+        for (auto const& f: dx.message_listeners)
+            f (hWnd, msg, wParam, lParam);
 
-    for (UINT i: { //?!
+    for (UINT i: {
             WM_LBUTTONDOWN, WM_LBUTTONDBLCLK, WM_RBUTTONDOWN, WM_RBUTTONDBLCLK,
             WM_MBUTTONDOWN, WM_MBUTTONDBLCLK, WM_XBUTTONDOWN, WM_XBUTTONDBLCLK,
             WM_LBUTTONUP, WM_RBUTTONUP, WM_MBUTTONUP, WM_XBUTTONUP,
             WM_MOUSEWHEEL, 0x020E, /*WM_MOUSEHWHEEL*/
-            WM_KEYDOWN, WM_SYSKEYDOWN, WM_KEYUP, WM_SYSKEYUP, WM_CHAR,
-            WM_NCHITTEST, WM_SETCURSOR
+            WM_KEYDOWN, WM_KEYUP, WM_CHAR,
         })
     {
         if (i == msg)
-            return ret;
+        {
+            return 0;
+        }
     }
 
     return ::CallWindowProc (dx.window_proc_orig, hWnd, msg, wParam, lParam);
@@ -221,66 +156,18 @@ window_proc (HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 static HRESULT WINAPI
 chain_present (IDXGISwapChain* pSwapChain, UINT SyncInterval, UINT Flags)
 {
-    ImGui_ImplDX11_NewFrame ();
-    ImGui_ImplWin32_NewFrame ();
-    ImGui::NewFrame ();
-
-    if (!dx.disable_dinput)
-        ImGui::GetIO ().MousePos = ImVec2 (-FLT_MAX, -FLT_MAX);
-
-    static bool show_demo_window = true;
-    static bool show_another_window = false;
-    static ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
-    //if (dx.imgui_active)
-    {
-        if (show_demo_window)
-            ImGui::ShowDemoWindow(&show_demo_window);
-        {
-            static float f = 0.0f;
-            static int counter = 0;
-
-            ImGui::Begin("Hello, world!");
-            ImGui::Text("This is some useful text.");
-            ImGui::Checkbox("Demo Window", &show_demo_window);
-            ImGui::Checkbox("Another Window", &show_another_window);
-            ImGui::SliderFloat("float", &f, 0.0f, 1.0f);
-            ImGui::ColorEdit3("clear color", (float*)&clear_color);
-
-            if (ImGui::Button("Button"))
-                counter++;
-            ImGui::SameLine();
-            ImGui::Text("counter = %d", counter);
-
-            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-            ImGui::End();
-        }
-        if (show_another_window)
-        {
-            ImGui::Begin("Another Window", &show_another_window);
-            ImGui::Text("Hello from another window!");
-            if (ImGui::Button("Close Me"))
-                show_another_window = false;
-            ImGui::End();
-        }
-    }
-
-    // Rendering
-    ImGui::Render ();
-    dx.context->OMSetRenderTargets (1, &dx.view, nullptr);
-    ImGui_ImplDX11_RenderDrawData (ImGui::GetDrawData ());
-
+    if (dx.enable_rendering)
+        for (auto const& f: dx.render_listeners)
+            f (pSwapChain, SyncInterval, Flags);
     return dx.chain_present_orig (pSwapChain, SyncInterval, Flags);
 }
 
 //--------------------------------------------------------------------------------------------------
 
 bool
-setup_imgui ()
+setup_window ()
 {
-    bool do_cleanup = true;
-    auto cleanup = gsl::finally ([&do_cleanup] { if (do_cleanup) cleanup_dx (); });
-
-    ssgui_error.clear ();
+    ssegui_error.clear ();
 
     HWND top_window = nullptr;
     ::EnumWindows (find_top_window_callback, (LPARAM) &top_window);
@@ -293,7 +180,6 @@ setup_imgui ()
     bool device_selected = false;
     if (dx.device_history.size ())
     {
-        std::lock_guard<std::mutex> lock (dx.device_mutex);
         for (auto const& r: dx.device_history)
         {
             if (top_window && top_window == r.window
@@ -314,21 +200,9 @@ setup_imgui ()
 
     if (!device_selected)
     {
-        ssgui_error = "Unable to find Skyrim DirectX"s;
+        ssegui_error = "Unable to find Skyrim DirectX"s;
         return false;
     }
-
-    create_dx_view ();
-    log () << "DirectX setup done." << std::endl;
-
-    IMGUI_CHECKVERSION ();
-    dx.imgui_context = ImGui::CreateContext ();
-    ImGuiIO& io = ImGui::GetIO ();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    ImGui::StyleColorsDark ();
-    dx.imgui_win32 = ImGui_ImplWin32_Init (dx.window);
-    dx.imgui_dx11 = ImGui_ImplDX11_Init (dx.device, dx.context);
-    log () << "ImGUI setup done." << std::endl;
 
     /*
     IUnknown: QueryInterface, AddRef, Release = 2,
@@ -338,18 +212,18 @@ setup_imgui ()
                     ResizeBuffers, ResizeTarget, GetContainingOutput, GetFrameStatistics = 16,
                     GetLastPresentCount = 17
     */
-    if (!sseh->profile ("SSGUI"))
+    if (!sseh->profile ("SSEGUI"))
     {
-        ssgui_error = __func__ + " SSEH/SSGUI profile "s + sseh_error ();
+        ssegui_error = __func__ + " SSEH/SSEGUI profile "s + sseh_error ();
         return false;
     }
     auto d3d11present = (*(std::uintptr_t**) dx.chain)[8];
-    auto present_name = "Skyrim.IDXGISwapChain::Present";
+    auto present_name = "IDXGISwapChain::Present";
     sseh->map_name (present_name, d3d11present);
     if (!sseh->detour (present_name, (void*) &chain_present, (void**) &dx.chain_present_orig)
             || !sseh->apply ())
     {
-        ssgui_error = __func__ + " detouring "s + present_name + " "s + sseh_error ();
+        ssegui_error = __func__ + " detouring "s + present_name + " "s + sseh_error ();
         return false;
     }
 
@@ -357,7 +231,6 @@ setup_imgui ()
             dx.window, GWLP_WNDPROC, (LONG_PTR) window_proc);
 
     log () << present_name << " hooked and window subclassed." << std::endl;
-    do_cleanup = false;
     return true;
 }
 
@@ -386,7 +259,6 @@ create_device (
     if (ppImmediateContext) r.context = *ppImmediateContext;
     if (r.window && r.chain && r.device && r.context)
     {
-        std::lock_guard<std::mutex> lock (dx.device_mutex);
         dx.device_history.push_back (r);
     }
 
@@ -406,16 +278,16 @@ bool
 detour_create_device ()
 {
     Expects (sseh);
-    ssgui_error.clear ();
-    if (!sseh->profile ("SSGUI"))
+    ssegui_error.clear ();
+    if (!sseh->profile ("SSEGUI"))
     {
-        ssgui_error = __func__ + " profile "s + sseh_error ();
+        ssegui_error = __func__ + " profile "s + sseh_error ();
         return false;
     }
     if (!sseh->detour ("D3D11CreateDeviceAndSwapChain@d3d11.dll",
                 (void*) &create_device, (void**) &dx.create_device_orig))
     {
-        ssgui_error = __func__ + " "s + sseh_error ();
+        ssegui_error = __func__ + " "s + sseh_error ();
         return false;
     }
     Ensures (dx.create_device_orig);
@@ -424,47 +296,49 @@ detour_create_device ()
 
 //--------------------------------------------------------------------------------------------------
 
-/// Avoid build time linking to a d3dcompiler library (as required by ImGUI). It is not very clear
-/// which verion an user will have.
-
-HRESULT WINAPI D3DCompile (
-        LPCVOID p1, SIZE_T p2, LPCSTR p3, D3D_SHADER_MACRO* p4, ID3DInclude* p5, LPCSTR p6,
-        LPCSTR p7, UINT p8, UINT p9, ID3DBlob** p10, ID3DBlob* p11)
+bool
+enable_rendering (bool* optional)
 {
-    if (dx.d3dcompile_failed)
-        return TYPE_E_ELEMENTNOTFOUND;
+    return std::exchange (dx.enable_rendering, optional ? *optional : dx.enable_rendering);
+}
 
-    if (!dx.d3dcompile)
+bool
+enable_messaging (bool* optional)
+{
+    return std::exchange (dx.enable_messaging, optional ? *optional : dx.enable_messaging);
+}
+
+//--------------------------------------------------------------------------------------------------
+
+/// void* as too lazy to type the type when needed.
+
+template<class T>
+static void
+update_listener (T& list, void* callback, bool remove)
+{
+    auto l = reinterpret_cast<typename T::value_type> (callback);
+    if (remove)
     {
-        ssgui_error.clear ();
-        std::string name;
-        HMODULE dll = nullptr;
-        for (int i = 50; i > 30 && !dll; --i)
-        {
-            name = "D3DCompiler_" + std::to_string (i) + ".dll";
-            dll = ::LoadLibraryA (name.c_str ());
-        }
-        if (!dll)
-        {
-            dx.d3dcompile_failed = true;
-            ssgui_error = __func__ + " unable to load d3dcompiler_XX.dll"s;
-            log () << ssgui_error << std::endl;
-            return TYPE_E_ELEMENTNOTFOUND;
-        }
-        dx.d3dcompile = (decltype (dx.d3dcompile)) ::GetProcAddress (dll, "D3DCompile");
-        if (!dx.d3dcompile)
-        {
-            ::FreeLibrary (dll);
-            dx.d3dcompile_failed = true;
-            ssgui_error = __func__ + " unable to find D3DCompile in "s + name;
-            log () << ssgui_error << std::endl;
-            return TYPE_E_ELEMENTNOTFOUND;
-        }
-        dx.d3dcompile_library = dll;
-        log () << "D3DCompile@" << name << " loaded." << std::endl;
+        list.erase (std::remove (list.begin (), list.end (),  l));
     }
+    else if (std::find (list.cbegin (), list.cend (), l) == list.cend ())
+    {
+        list.push_back (l);
+    }
+}
 
-    return dx.d3dcompile (p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11);
+void
+update_render_listener (void* callback, bool remove)
+{
+    Expects (callback);
+    update_listener (dx.render_listeners, callback, remove);
+}
+
+void
+update_message_listener (void* callback, bool remove)
+{
+    Expects (callback);
+    update_listener (dx.message_listeners, callback, remove);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -473,10 +347,12 @@ HRESULT WINAPI D3DCompile (
 #pragma GCC diagnostic ignored "-Wunused-function"
 #endif
 
-static std::string
+/// Hanging around for debug purposes
+
+static const char*
 window_message_text (unsigned msg)
 {
-    static const std::vector<std::pair<unsigned, const char*>> db = {
+    static std::map<unsigned, std::string> db = {
         {   0, "WM_NULL"},
         {   1, "WM_CREATE" },
         {   2, "WM_DESTROY" },
@@ -769,15 +645,24 @@ window_message_text (unsigned msg)
         { 903, "WM_CTLINIT" },
         { 904, "WM_PENEVENT" },
         { 911, "WM_PENWINLAST" },
-        { 1024,"WM_USER" }
     };
-    if (msg >= 1024)
-        return "WM_USER+" + std::to_string (msg);
-    auto it = std::lower_bound (db.cbegin (), db.cend (), msg,
-            [] (auto const& p, unsigned v) { return p.first < v; });
-    if (it != db.cend () && it->first == msg)
-        return it->second;
-    return "WM_" + std::to_string (msg);
+    auto& txt = db[msg];
+    if (txt.empty ())
+    {
+        if (msg >= 1024 && msg < 32768)
+            txt = "WM_USER+" + std::to_string (msg);
+        else if (msg >= 32768 && msg < 0xc000)
+            txt = "WM_APP+" + std::to_string (msg);
+        // Non-official stuff
+        else if (msg >= 0xc000)
+        {
+            txt.resize (64);
+            txt.resize (::GetClipboardFormatNameA (msg, &txt[0], txt.size ()));
+        }
+        if (txt.empty ())
+            txt = "WM_+" + std::to_string (msg);
+    }
+    return txt.c_str ();
 }
 
 //--------------------------------------------------------------------------------------------------

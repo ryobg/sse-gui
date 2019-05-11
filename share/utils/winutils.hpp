@@ -34,7 +34,11 @@
 #include <array>
 #include <algorithm>
 
+#define NTDDI_VERSION NTDDI_VISTA // Default is NT, cross finger ppl dont use WinXP to play Skyrim
 #include <windows.h>
+#include <shlobj.h>
+#include <initguid.h>
+#include <knownfolders.h>
 
 //--------------------------------------------------------------------------------------------------
 
@@ -143,6 +147,21 @@ format_utf8message (T error_code)
     ::LocalFree (buff);
     return m;
 }
+
+//--------------------------------------------------------------------------------------------------
+
+template<class T>
+bool
+known_folder_path (REFKNOWNFOLDERID rfid, T& path)
+{
+    PWSTR buff = nullptr;
+    if (S_OK != ::SHGetKnownFolderPath (rfid, 0, nullptr, &buff))
+        return false;
+    bool ret = utf16_to_utf8 (buff, path);
+    ::CoTaskMemFree (buff);
+    return ret;
+}
+
 
 //--------------------------------------------------------------------------------------------------
 

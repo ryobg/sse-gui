@@ -3,20 +3,20 @@
  * @brief Detect the current operating environment
  * @internal
  *
- * This file is part of SSE Hooks project (aka SSGUI).
+ * This file is part of SSE Hooks project (aka SSEGUI).
  *
- *   SSGUI is free software: you can redistribute it and/or modify it
+ *   SSEGUI is free software: you can redistribute it and/or modify it
  *   under the terms of the GNU Lesser General Public License as published
  *   by the Free Software Foundation, either version 3 of the License, or
  *   (at your option) any later version.
  *
- *   SSGUI is distributed in the hope that it will be useful,
+ *   SSEGUI is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *   GNU Lesser General Public License for more details.
  *
  *   You should have received a copy of the GNU Lesser General Public
- *   License along with SSGUI. If not, see <http://www.gnu.org/licenses/>.
+ *   License along with SSEGUI. If not, see <http://www.gnu.org/licenses/>.
  *
  * @endinternal
  *
@@ -29,14 +29,14 @@
  * compiler is used for the build and API build helpers.
  */
 
-#ifndef SSGUI_PLATFORM_H
-#define SSGUI_PLATFORM_H
+#ifndef SSEGUI_PLATFORM_H
+#define SSEGUI_PLATFORM_H
 
 /*----------------------------------------------------------------------------*/
 /* Select operating system: */
 
-#undef SSGUI_WINDOWS
-#undef SSGUI_POSIX
+#undef SSEGUI_WINDOWS
+#undef SSEGUI_POSIX
 
 #if defined(_WIN32) \
     || defined(_WIN64) \
@@ -46,81 +46,81 @@
     || defined(__MINGW64__)
 
 /** Defined when targeting Microsoft Windows operating system */
-#define SSGUI_WINDOWS
+#define SSEGUI_WINDOWS
 
 #else
 
 /** Defined when NOT targeting Windows but POSIX compatible system */
-#define SSGUI_POSIX
+#define SSEGUI_POSIX
 
 #endif
 
 /*----------------------------------------------------------------------------*/
 /* Select compiler: */
 
-#undef SSGUI_GNUC
-#undef SSGUI_MSVC
-#undef SSGUI_MINGW
+#undef SSEGUI_GNUC
+#undef SSEGUI_MSVC
+#undef SSEGUI_MINGW
 
 #if defined(__GNUC__)
 
 /** Any GNU GCC C++ compiler */
-#define SSGUI_GNUC \
+#define SSEGUI_GNUC \
     (__GNUC__ * 10000 + __GNUC_MINOR__ * 100 + __GNUC_PATCHLEVEL__)
 
 #if defined(__MINGW32__) || defined(__MINGW64__)
 /** GNU GCC as cross compiler or native under Windows. */
-#define SSGUI_MINGW SSGUI_GNUC
+#define SSEGUI_MINGW SSEGUI_GNUC
 #endif
 
 #elif defined(_MSC_VER) /* Last as other vendors also define this. */
 
 /** Any Microsoft Visual Studio C++ compiler. */
-#define SSGUI_MSVC (_MSC_VER)
+#define SSEGUI_MSVC (_MSC_VER)
 
 #endif
 
 /*----------------------------------------------------------------------------*/
 /* Select the C calling convention: */
 
-#undef SSGUI_CCONV
+#undef SSEGUI_CCONV
 
-#if defined(SSGUI_WINDOWS) && !defined(SSGUI_MINGW)
-#if defined(SSGUI_GNUC)
+#if defined(SSEGUI_WINDOWS) && !defined(SSEGUI_MINGW)
+#if defined(SSEGUI_GNUC)
 /** GCC on Windows understands stdcall */
-#define SSGUI_CCONV __attribute__((stdcall))
+#define SSEGUI_CCONV __attribute__((stdcall))
 
-#elif defined(SSGUI_MSVC)
+#elif defined(SSEGUI_MSVC)
 /** Visual C++ on Windows uses stdcall */
-#define SSGUI_CCONV __stdcall
+#define SSEGUI_CCONV __stdcall
 #endif
 
-#elif defined(SSGUI_POSIX) || defined(SSGUI_MINGW)
+#elif defined(SSEGUI_POSIX) || defined(SSEGUI_MINGW)
 /** Linux/Unix/Cross and etc. use only one type of convention */
-#define SSGUI_CCONV
+#define SSEGUI_CCONV
 
 #endif
 
 /*----------------------------------------------------------------------------*/
 /* Select the shared library interface */
 
-#undef SSGUI_API
+#undef SSEGUI_API
 
-#if defined(SSGUI_WINDOWS)
+#if defined(SSEGUI_WINDOWS)
 
 /* In practice this is defined as paramater to the build. */
-#if defined(SSGUI_BUILD_API)
+#if defined(SSEGUI_BUILD_API)
 /** The current build exposes DLL functions */
-#define SSGUI_API __declspec(dllexport)
+#define SSEGUI_API __declspec(dllexport)
 
 #else
 /** The current build imports, previously exported DLL functions */
-#define SSGUI_API __declspec(dllimport)
+#define SSEGUI_API __declspec(dllimport)
 #endif
 
-#elif defined(SSGUI_POSIX)
+#elif defined(SSEGUI_POSIX)
 /** The current build does not use any specific storage information */
-#define SSGUI_API
+#define SSEGUI_API
 
 #endif
 

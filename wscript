@@ -2,22 +2,22 @@
 # encoding: utf-8
 '''
 @file wscript
-@brief This is the main Waf based build sytem file for SSGUI
+@brief This is the main Waf based build sytem file for SSEGUI
 
-This file is part of SSE Graphical User Interface project (aka SSGUI).
+This file is part of SSE Graphical User Interface project (aka SSEGUI).
 
-  SSGUI is free software: you can redistribute it and/or modify it
+  SSEGUI is free software: you can redistribute it and/or modify it
   under the terms of the GNU Lesser General Public License as published
   by the Free Software Foundation, either version 3 of the License, or
   (at your option) any later version.
 
-  SSGUI is distributed in the hope that it will be useful,
+  SSEGUI is distributed in the hope that it will be useful,
   but WITHOUT ANY WARRANTY; without even the implied warranty of
   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
   GNU Lesser General Public License for more details.
 
   You should have received a copy of the GNU Lesser General Public
-  License along with SSGUI. If not, see <http://www.gnu.org/licenses/>.
+  License along with SSEGUI. If not, see <http://www.gnu.org/licenses/>.
 
 @endinternal
 
@@ -58,7 +58,7 @@ def configure(conf):
         conf.check_cxx (msg="Checking for '-std=c++14'", cxxflags='-std=c++14') 
         conf.env.append_unique('CXXFLAGS', \
                 ['-std=c++14', "-O2", "-Wall", "-D_UNICODE", "-DUNICODE"])
-        conf.env.append_unique ('STLIB', ['stdc++', 'pthread', 'dwmapi'])
+        conf.env.append_unique ('STLIB', ['stdc++', 'pthread', 'dwmapi', 'ole32'])
         conf.env.append_unique ('LINKFLAGS', ['-static-libgcc', '-static-libstdc++'])
     elif conf.env['CXX_NAME'] is 'msvc':
         conf.env.append_unique('CXXFLAGS', ['/EHsc', '/MT', '/O2'])
@@ -66,9 +66,9 @@ def configure(conf):
 def build (bld):
     bld.shlib (
         target   = APPNAME, 
-        source   = bld.path.ant_glob (["src/*.cpp", "share/imgui/*.cpp"], excl=["src/test_*.cpp"]), 
+        source   = bld.path.ant_glob ("src/*.cpp", excl=["src/test_*.cpp"]), 
         includes = ['src', 'include', 'share'],
-        cxxflags = ['-DSSGUI_BUILD_API', '-DSSGUI_TIMESTAMP="'+str(_datetime_now())+'"'])
+        cxxflags = ['-DSSEGUI_BUILD_API', '-DSSEGUI_TIMESTAMP="'+str(_datetime_now())+'"'])
     for src in bld.path.ant_glob ("src/test_*.cpp"):
         f = os.path.basename (str (src))
         f = os.path.splitext (f)[0]

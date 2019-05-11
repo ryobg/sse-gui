@@ -1,22 +1,22 @@
 /**
  * @file skse.cpp
- * @brief Implementing SSGUI as plugin for SKSE
+ * @brief Implementing SSEGUI as plugin for SKSE
  * @internal
  *
- * This file is part of SSE Hooks project (aka SSGUI).
+ * This file is part of SSE Hooks project (aka SSEGUI).
  *
- *   SSGUI is free software: you can redistribute it and/or modify it
+ *   SSEGUI is free software: you can redistribute it and/or modify it
  *   under the terms of the GNU Lesser General Public License as published
  *   by the Free Software Foundation, either version 3 of the License, or
  *   (at your option) any later version.
  *
- *   SSGUI is distributed in the hope that it will be useful,
+ *   SSEGUI is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *   GNU Lesser General Public License for more details.
  *
  *   You should have received a copy of the GNU Lesser General Public
- *   License along with SSGUI. If not, see <http://www.gnu.org/licenses/>.
+ *   License along with SSEGUI. If not, see <http://www.gnu.org/licenses/>.
  *
  * @endinternal
  *
@@ -24,14 +24,15 @@
  *
  * @details
  * This file only depends on one header file provided by SKSE. As it looks, that plugin interface
- * does not change much, if at all. Hence, this means there is stable interface which can make SSGUI
- * version independent of SKSE. This file by itself is standalone enough so it can be a separate DLL
- * project - binding SSGUI to SKSE.
+ * does not change much, if at all. Hence, this means there is stable interface which can make
+ * SSEGUI version independent of SKSE. This file by itself is standalone enough so it can be a
+ * separate DLL project - binding SSEGUI to SKSE.
  */
 
 #include <sse-gui/sse-gui.h>
 #include <sse-hooks/sse-hooks.h>
 #include <gsl/gsl_assert>
+#include <utils/winutils.hpp>
 
 #include <cstdint>
 typedef std::uint32_t UInt32;
@@ -59,15 +60,21 @@ static std::ofstream logfile;
 std::unique_ptr<sseh_api> sseh;
 
 /// Defined in sse-gui.cpp
-extern std::string ssgui_last_error ();
+extern std::string ssegui_last_error ();
 
 //--------------------------------------------------------------------------------------------------
 
-/// TODO: Better location
-
-static void open_log ()
+static void
+open_log ()
 {
-    logfile.open ("ssgui.log");
+    std::string path;
+    if (known_folder_path (FOLDERID_Documents, path))
+    {
+        // Before plugins are loaded, SKSE takes care to create the directiories
+        path += "\\My Games\\Skyrim Special Edition\\SKSE\\";
+    }
+    path += "sse-gui.log";
+    logfile.open (path);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -107,7 +114,8 @@ sseh_error ()
 
 //--------------------------------------------------------------------------------------------------
 
-static void handle_sseh_message (SKSEMessagingInterface::Message* m)
+static void
+handle_sseh_message (SKSEMessagingInterface::Message* m)
 {
     if (m->type == 0) // After sseh_apply ()
         return;
@@ -126,7 +134,7 @@ static void handle_sseh_message (SKSEMessagingInterface::Message* m)
     extern bool detour_create_device ();
     if (!detour_create_device ())
     {
-        log () << ssgui_last_error () << std::endl;
+        log () << ssegui_last_error () << std::endl;
         log () << "Unable to detour DirectX. Bailing out." << std::endl;
     }
 
@@ -136,7 +144,7 @@ static void handle_sseh_message (SKSEMessagingInterface::Message* m)
     extern bool detour_dinput ();
     if (!detour_dinput ())
     {
-        log () << ssgui_last_error () << std::endl;
+        log () << ssegui_last_error () << std::endl;
         log () << "Unable to detour DirectInput. Bailing out." << std::endl;
     }
 }
@@ -145,13 +153,14 @@ static void handle_sseh_message (SKSEMessagingInterface::Message* m)
 
 /// Post Load ensure SSEH is loaded and can accept listeners
 /// Post Post load starts to sniff about D11 context, devices, windows and etc.
-/// Input Loaded ensures these are already created and we can install SSE GUI
+/// Input Loaded ensures these are already created and we can install SSEGUI
 
-static void handle_skse_message (SKSEMessagingInterface::Message* m)
+static void
+handle_skse_message (SKSEMessagingInterface::Message* m)
 {
     if (m->type == SKSEMessagingInterface::kMessage_PostLoad)
     {
-        log () << "SKSE Post Load." << std::endl;
+        log () << "SKSE Post Load. Registering SSEH listener..." << std::endl;
         messages->RegisterListener (plugin, "SSEH", handle_sseh_message);
         return;
     }
@@ -159,35 +168,35 @@ static void handle_skse_message (SKSEMessagingInterface::Message* m)
     if (!sseh || m->type != SKSEMessagingInterface::kMessage_InputLoaded)
         return;
 
-    log () << "SKSE Input Loaded." << std::endl;
-    extern bool setup_imgui ();
-    if (!setup_imgui ())
+    log () << "SKSE Input Loaded. Setting up window..." << std::endl;
+    extern bool setup_window ();
+    if (!setup_window ())
     {
-        log () << ssgui_last_error () << std::endl;
-        log () << "Unable to setup ImGUI. Bailing out." << std::endl;
+        log () << ssegui_last_error () << std::endl;
+        log () << "Unable to setup window. Bailing out." << std::endl;
         return;
     }
 
     int api;
-    ssgui_version (&api, nullptr, nullptr, nullptr);
-    auto data = ssgui_make_api ();
+    ssegui_version (&api, nullptr, nullptr, nullptr);
+    auto data = ssegui_make_api ();
     messages->Dispatch (plugin, UInt32 (api), &data, sizeof (data), nullptr);
 
-    log () << "SSGUI interface broadcasted." << std::endl;
+    log () << "SSEGUI interface broadcasted." << std::endl;
 }
 
 //--------------------------------------------------------------------------------------------------
 
 /// @see SKSE.PluginAPI.h
 
-extern "C" SSGUI_API bool SSGUI_CCONV
+extern "C" SSEGUI_API bool SSEGUI_CCONV
 SKSEPlugin_Query (SKSEInterface const* skse, PluginInfo* info)
 {
     int api;
-    ssgui_version (&api, nullptr, nullptr, nullptr);
+    ssegui_version (&api, nullptr, nullptr, nullptr);
 
     info->infoVersion = PluginInfo::kInfoVersion;
-    info->name = "SSGUI";
+    info->name = "SSEGUI";
     info->version = api;
 
     plugin = skse->GetPluginHandle ();
@@ -202,21 +211,18 @@ SKSEPlugin_Query (SKSEInterface const* skse, PluginInfo* info)
 
 /// @see SKSE.PluginAPI.h
 
-extern "C" SSGUI_API bool SSGUI_CCONV
+extern "C" SSEGUI_API bool SSEGUI_CCONV
 SKSEPlugin_Load (SKSEInterface const* skse)
 {
     open_log ();
 
     messages = (SKSEMessagingInterface*) skse->QueryInterface (kInterface_Messaging);
-    if (!messages)
-        return false;
-
     messages->RegisterListener (plugin, "SKSE", handle_skse_message);
 
     int a, m, p;
     const char* b;
-    ssgui_version (&a, &m, &p, &b);
-    log () << "SSGUI "<< a <<'.'<< m <<'.'<< p <<" ("<< b <<')' << std::endl;
+    ssegui_version (&a, &m, &p, &b);
+    log () << "SSEGUI "<< a <<'.'<< m <<'.'<< p <<" ("<< b <<')' << std::endl;
     return true;
 }
 

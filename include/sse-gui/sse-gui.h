@@ -3,20 +3,20 @@
  * @brief Public C API for users of SSE Hooks
  * @internal
  *
- * This file is part of SSE Hooks project (aka SSGUI).
+ * This file is part of SSE Hooks project (aka SSEGUI).
  *
- *   SSGUI is free software: you can redistribute it and/or modify it
+ *   SSEGUI is free software: you can redistribute it and/or modify it
  *   under the terms of the GNU Lesser General Public License as published
  *   by the Free Software Foundation, either version 3 of the License, or
  *   (at your option) any later version.
  *
- *   SSGUI is distributed in the hope that it will be useful,
+ *   SSEGUI is distributed in the hope that it will be useful,
  *   but WITHOUT ANY WARRANTY; without even the implied warranty of
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  *   GNU Lesser General Public License for more details.
  *
  *   You should have received a copy of the GNU Lesser General Public
- *   License along with SSGUI. If not, see <http://www.gnu.org/licenses/>.
+ *   License along with SSEGUI. If not, see <http://www.gnu.org/licenses/>.
  *
  * @endinternal
  *
@@ -27,20 +27,20 @@
  *
  * @details
  * This file encompass all the functions which are presented to the users of
- * SSGUI. The interface targets to be maximum compatible and portable
+ * SSEGUI. The interface targets to be maximum compatible and portable
  * across the expected build and usage scenarios. This file uses generic C, but
  * is compatible with C++. As the methods are to be exported in the DLL, this
  * lib interface can be also accessed from other languages too.
  */
 
-#ifndef SSGUI_SSEGUI_H
-#define SSGUI_SSEGUI_H
+#ifndef SSEGUI_SSEGUI_H
+#define SSEGUI_SSEGUI_H
 
 #include <stdint.h>
 #include <sse-gui/platform.h>
 
 /// To match a compiled in API against one loaded at run-time.
-#define SSGUI_API_VERSION (1)
+#define SSEGUI_API_VERSION (1)
 
 #ifdef __cplusplus
 extern "C" {
@@ -52,8 +52,9 @@ extern "C" {
  * Run-time version of this API and its implementation details.
  *
  * This function can be used to detect in run-time what kind of feature & fixes
- * on the API, the loaded SSGUI is compiled with. This function is the only one,
- * which is guaranteed to preseve through the whole lifecycle of this product.
+ * on the API, the loaded SSEGUI is compiled with. This function is the only
+ * one, which is guaranteed to preseve through the whole lifecycle of this
+ * product.
  *
  * The @param api tells what version is the current API. Any version different
  * than the one expected guarantees a broken interface. Most likely it will
@@ -67,7 +68,7 @@ extern "C" {
  * interest. It is reserved for patches, bug fixes, maybe documentation updates
  * re-release of something and etc.
  *
- * It is advised to check @param api against #SSGUI_API_VERSION.
+ * It is advised to check @param api against #SSEGUI_API_VERSION.
  *
  * @param[out] api (optional) non-portable
  * @param[out] maj (optional) new features and enhancements
@@ -75,12 +76,12 @@ extern "C" {
  * @param[out] timestamp (optional) in ISO format
  */
 
-SSGUI_API void SSGUI_CCONV
-ssgui_version (int* api, int* maj, int* imp, const char** timestamp);
+SSEGUI_API void SSEGUI_CCONV
+ssegui_version (int* api, int* maj, int* imp, const char** timestamp);
 
-/** @see #ssgui_version() */
+/** @see #ssegui_version() */
 
-typedef void (SSGUI_CCONV* ssgui_version_t) (int*, int*, int*, const char**);
+typedef void (SSEGUI_CCONV* ssegui_version_t) (int*, int*, int*, const char**);
 
 /******************************************************************************/
 
@@ -95,12 +96,112 @@ typedef void (SSGUI_CCONV* ssgui_version_t) (int*, int*, int*, const char**);
  * needed to pre-allocate a buffer.
  */
 
-SSGUI_API void SSGUI_CCONV
-ssgui_last_error (size_t* size, char* message);
+SSEGUI_API void SSEGUI_CCONV
+ssegui_last_error (size_t* size, char* message);
 
-/** @see #ssgui_last_error() */
+/** @see #ssegui_last_error() */
 
-typedef void (SSGUI_CCONV* ssgui_last_error_t) (size_t*, char*);
+typedef void (SSEGUI_CCONV* ssegui_last_error_t) (size_t*, char*);
+
+/******************************************************************************/
+
+/**
+ * Enable (default) the DInput for the hooked application.
+ *
+ * By default the control key, toggles the keyboard and mouse state, but this
+ * function can be used for explicit requests (though the key will overwride
+ * them if pressed).
+ *
+ * When the input is enabled, the hooked appliation will receive data, if
+ * disabled - the keyboard and/or the mouse will freeze for the game. The
+ * Windows message loop though will continue receive messages, so SSE GUI
+ * plugins can continue reacting.
+ *
+ * @param[in,out] keyboard to enable (positive), disable (zero) or only report
+ *  state for (negative). On exit it will contain the old value (positive/zero)
+ *  or the current (negative) value.
+ * @param[in,out] mouse see @param keyboard
+ */
+
+SSEGUI_API void SSEGUI_CCONV
+ssegui_enable_input (int* keyboard, int* mouse);
+
+/** @see #ssegui_enable_input() */
+
+typedef void (SSEGUI_CCONV* ssegui_enable_input_t) (int*, int*);
+
+/**
+ * Change the SSE GUI input control key.
+ *
+ * The control key is one of the DInput DIK_* constants (scan code) used to
+ * toggle the input device on or off for the game. These codes are the same used
+ * by SKSE and the KeyPressed(...) and etc. functions available for Papyrus.
+ *
+ * @see https://docs.microsoft.com/en-us/previous-versions/windows/desktop/ee418641(v=vs.85)
+ * @param[in,out] dik constant to be used from now on, if the param is negative
+ *  or out of bounds (>255) it won't change the constant. On exit it will
+ *  contain the previous, or the current (if not changed) key used.
+ */
+
+SSEGUI_API void SSEGUI_CCONV
+ssegui_control_key (int* dik);
+
+/** @see #ssegui_control_key() */
+
+typedef void (SSEGUI_CCONV* ssegui_control_key_t) (int*);
+
+/******************************************************************************/
+
+/// @see https://docs.microsoft.com/en-us/windows/desktop/api/dxgi/nf-dxgi-idxgiswapchain-present
+
+typedef void (SSEGUI_CCONV* ssegui_render_callback)
+    (void* pSwapChain, unsigned SyncInterval, unsigned Flags);
+
+/**
+ * Register or remove a render listener
+ *
+ * These functions are invoked on each frame rendering, so plug ins can render
+ * elements above or something. Note that, less and faster is better, or the
+ * FPS can suffer.
+ *
+ * @param[in] callback to call or @param remove
+ * @param[in] remove if positive, append if zero.
+ */
+
+SSEGUI_API void SSEGUI_CCONV
+ssegui_render_listener (ssegui_render_callback callback, int remove);
+
+/** @see #ssegui_render_listener() */
+
+typedef void (SSEGUI_CCONV* ssegui_render_listener_t)
+    (ssegui_render_callback, int);
+
+/******************************************************************************/
+
+/** @see https://msdn.microsoft.com/en-us/library/windows/desktop/ms633573(v=vs.85).aspx */
+
+typedef intptr_t (SSEGUI_CCONV* ssegui_message_callback)
+    (void* hWnd, unsigned msg, uintptr_t wParam, intptr_t lParam);
+
+/**
+ * Register or remove a windows message listener
+ *
+ * The callback is called on each received window message, before forwarding to
+ * the rest of the subclass chain. It is somehow easy to install such hook
+ * through ::FindWindow() and ::SetWindowLongPtr(), but this is exposed as
+ * complement to the rendering.
+ *
+ * @param[in] callback to call or @param remove
+ * @param[in] remove if positive, append if zero.
+ */
+
+SSEGUI_API void SSEGUI_CCONV
+ssegui_message_listener (ssegui_message_callback callback, int remove);
+
+/** @see #ssegui_message_listener() */
+
+typedef void (SSEGUI_CCONV* ssegui_message_listener_t)
+    (ssegui_message_callback, int);
 
 /******************************************************************************/
 
@@ -112,15 +213,15 @@ typedef void (SSGUI_CCONV* ssgui_last_error_t) (size_t*, char*);
  *
  * @param[in] command identifier
  * @param[in,out] arg to pass in or out data
- * @returns non-zero on success, otherwise see #ssgui_last_error ()
+ * @returns non-zero on success, otherwise see #ssegui_last_error ()
  */
 
-SSGUI_API int SSGUI_CCONV
-ssgui_execute (const char* command, void* arg);
+SSEGUI_API int SSEGUI_CCONV
+ssegui_execute (const char* command, void* arg);
 
-/** @see #ssgui_execute() */
+/** @see #ssegui_execute() */
 
-typedef int (SSGUI_CCONV* ssgui_execute_t) (const char*, void*);
+typedef int (SSEGUI_CCONV* ssegui_execute_t) (const char*, void*);
 
 /******************************************************************************/
 
@@ -131,33 +232,41 @@ typedef int (SSGUI_CCONV* ssgui_execute_t) (const char*, void*);
  * structure.
  */
 
-struct ssgui_api_v1
+struct ssegui_api_v1
 {
-	/** @see #ssgui_version() */
-	ssgui_version_t version;
-	/** @see #ssgui_last_error() */
-	ssgui_last_error_t last_error;
-	/** @see #ssgui_execute() */
-	ssgui_execute_t execute;
+	/** @see #ssegui_version() */
+	ssegui_version_t version;
+	/** @see #ssegui_last_error() */
+	ssegui_last_error_t last_error;
+    /** @see #ssegui_enable_input() */
+    ssegui_enable_input_t enable_input;
+    /** @see #ssegui_control_key() */
+    ssegui_control_key_t control_key;
+    /** @see #ssegui_render_listener() */
+    ssegui_render_listener_t render_listener;
+    /** @see #ssegui_message_listener() */
+    ssegui_message_listener_t message_listener;
+	/** @see #ssegui_execute() */
+	ssegui_execute_t execute;
 };
 
 /** Points to the current API version in use. */
-typedef struct ssgui_api_v1 ssgui_api;
+typedef struct ssegui_api_v1 ssegui_api;
 
 /******************************************************************************/
 
 /**
- * Create an instance of #ssgui_api, ready for use.
+ * Create an instance of #ssegui_api, ready for use.
  *
  * @returns an API
  */
 
-SSGUI_API ssgui_api SSGUI_CCONV
-ssgui_make_api ();
+SSEGUI_API ssegui_api SSEGUI_CCONV
+ssegui_make_api ();
 
-/** @see #ssgui_make_api() */
+/** @see #ssegui_make_api() */
 
-typedef ssgui_api (SSGUI_CCONV* ssgui_make_api_t) ();
+typedef ssegui_api (SSEGUI_CCONV* ssegui_make_api_t) ();
 
 /******************************************************************************/
 
@@ -165,7 +274,7 @@ typedef ssgui_api (SSGUI_CCONV* ssgui_make_api_t) ();
 }
 #endif
 
-#endif /* SSGUI_SSEGUI_H */
+#endif /* SSEGUI_SSEGUI_H */
 
 /* EOF */
 
