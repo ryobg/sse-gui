@@ -206,6 +206,32 @@ typedef void (SSEGUI_CCONV* ssegui_message_listener_t)
 /******************************************************************************/
 
 /**
+ * Read a parameter value
+ *
+ * This function is useful to retrieve some of the stored values which may be
+ * of an interest, like the D11 chain pointer or the render window address.
+ *
+ * Current supported parameters (@param name, @param value type):
+ * * "ID3D11Device", ID3D11Device**
+ * * "ID3D11DeviceContext", ID3D11Device**
+ * * "IDXGISwapChain", ID3D11Device**
+ * * "window", HWND*
+ *
+ * @param[in] name of the parameter to obtain value for
+ * @param[out] value to store in
+ * @return non-zero if found, zero if no such parameter can be obtained
+ */
+
+SSEGUI_API int SSEGUI_CCONV
+ssegui_parameter (const char* name, void* value);
+
+/** @see #ssegui_parameter() */
+
+typedef int (SSEGUI_CCONV* ssegui_parameter_t) (const char*, void*);
+
+/******************************************************************************/
+
+/**
  * Execute custom command.
  *
  * This is highly implementation specific and may change any moment. It is like
@@ -234,10 +260,10 @@ typedef int (SSEGUI_CCONV* ssegui_execute_t) (const char*, void*);
 
 struct ssegui_api_v1
 {
-	/** @see #ssegui_version() */
-	ssegui_version_t version;
-	/** @see #ssegui_last_error() */
-	ssegui_last_error_t last_error;
+    /** @see #ssegui_version() */
+    ssegui_version_t version;
+    /** @see #ssegui_last_error() */
+    ssegui_last_error_t last_error;
     /** @see #ssegui_enable_input() */
     ssegui_enable_input_t enable_input;
     /** @see #ssegui_control_key() */
@@ -246,8 +272,10 @@ struct ssegui_api_v1
     ssegui_render_listener_t render_listener;
     /** @see #ssegui_message_listener() */
     ssegui_message_listener_t message_listener;
-	/** @see #ssegui_execute() */
-	ssegui_execute_t execute;
+    /** @see #ssegui_parameter() */
+    ssegui_parameter_t parameter;
+    /** @see #ssegui_execute() */
+    ssegui_execute_t execute;
 };
 
 /** Points to the current API version in use. */

@@ -389,6 +389,9 @@ detour_dinput ()
         return false;
     }
     Ensures (di.input_create_orig);
+
+    // Not the best place, but stil...
+    di.disable_dinput_key = DIK_INSERT;
     return true;
 }
 

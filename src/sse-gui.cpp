@@ -3,7 +3,7 @@
  * @copybrief sse-hooks.h
  * @internal
  *
- * This file is part of SSE Hooks project (aka SSEGUI).
+ * This file is part of SSE GUI project (aka SSEGUI).
  *
  *   SSEGUI is free software: you can redistribute it and/or modify it
  *   under the terms of the GNU Lesser General Public License as published
@@ -41,9 +41,6 @@
 //--------------------------------------------------------------------------------------------------
 
 using namespace std::string_literals;
-
-/// Opened from within skse.cpp
-extern std::ofstream& log ();
 
 /// [shared] Supports SSEGUI specific errors in a manner of #GetLastError() and #FormatMessage()
 std::string ssegui_error;
@@ -162,6 +159,15 @@ ssegui_message_listener (ssegui_message_callback callback, int remove)
 //--------------------------------------------------------------------------------------------------
 
 SSEGUI_API int SSEGUI_CCONV
+ssegui_parameter (const char* name, void* value)
+{
+    extern bool render_parameter (std::string const&, void*);
+    return render_parameter (name, value);
+}
+
+//--------------------------------------------------------------------------------------------------
+
+SSEGUI_API int SSEGUI_CCONV
 ssegui_execute (const char* command, void* arg)
 {
     return false;
@@ -179,6 +185,7 @@ ssegui_make_api ()
     api.control_key      = ssegui_control_key;
     api.render_listener  = ssegui_render_listener;
     api.message_listener = ssegui_message_listener;
+    api.parameter        = ssegui_parameter;
     api.execute          = ssegui_execute;
     return api;
 }

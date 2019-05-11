@@ -3,7 +3,7 @@
  * @brief Implementing SSEGUI as plugin for SKSE
  * @internal
  *
- * This file is part of SSE Hooks project (aka SSEGUI).
+ * This file is part of SSE GUI project (aka SSEGUI).
  *
  *   SSEGUI is free software: you can redistribute it and/or modify it
  *   under the terms of the GNU Lesser General Public License as published
@@ -181,8 +181,14 @@ handle_skse_message (SKSEMessagingInterface::Message* m)
     ssegui_version (&api, nullptr, nullptr, nullptr);
     auto data = ssegui_make_api ();
     messages->Dispatch (plugin, UInt32 (api), &data, sizeof (data), nullptr);
-
     log () << "SSEGUI interface broadcasted." << std::endl;
+
+    extern bool enable_rendering (bool* optional);
+    extern bool enable_messaging (bool* optional);
+    bool en = true;
+    enable_rendering (&en);
+    enable_messaging (&en);
+    log () << "SSEGUI enabled." << std::endl;
 }
 
 //--------------------------------------------------------------------------------------------------

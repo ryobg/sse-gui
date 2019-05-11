@@ -297,6 +297,24 @@ detour_create_device ()
 //--------------------------------------------------------------------------------------------------
 
 bool
+render_parameter (std::string const& name, void* value)
+{
+    if (name == "ID3D11Device")
+        *((ID3D11Device**) value) = dx.device;
+    else if (name == "ID3D11DeviceContext")
+        *((ID3D11DeviceContext**) value) = dx.context;
+    else if (name == "IDXGISwapChain")
+        *((IDXGISwapChain**) value) = dx.chain;
+    else if (name == "window")
+        *((HWND*) value) = dx.window;
+    else
+        return false;
+    return true;
+}
+
+//--------------------------------------------------------------------------------------------------
+
+bool
 enable_rendering (bool* optional)
 {
     return std::exchange (dx.enable_rendering, optional ? *optional : dx.enable_rendering);
@@ -313,32 +331,37 @@ enable_messaging (bool* optional)
 /// void* as too lazy to type the type when needed.
 
 template<class T>
-static void
+static bool
 update_listener (T& list, void* callback, bool remove)
 {
     auto l = reinterpret_cast<typename T::value_type> (callback);
     if (remove)
     {
         list.erase (std::remove (list.begin (), list.end (),  l));
+        return true;
     }
     else if (std::find (list.cbegin (), list.cend (), l) == list.cend ())
     {
         list.push_back (l);
+        return true;
     }
+    return false;
 }
 
 void
 update_render_listener (void* callback, bool remove)
 {
     Expects (callback);
-    update_listener (dx.render_listeners, callback, remove);
+    if (update_listener (dx.render_listeners, callback, remove))
+        log () << "Render callback " << callback << (remove ? " removed.":" added.") << std::endl;
 }
 
 void
 update_message_listener (void* callback, bool remove)
 {
     Expects (callback);
-    update_listener (dx.message_listeners, callback, remove);
+    if (update_listener (dx.message_listeners, callback, remove))
+        log () << "Message callback " << callback << (remove ? " removed.":" added.") << std::endl;
 }
 
 //--------------------------------------------------------------------------------------------------
