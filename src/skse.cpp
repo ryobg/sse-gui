@@ -117,9 +117,6 @@ sseh_error ()
 static void
 handle_sseh_message (SKSEMessagingInterface::Message* m)
 {
-    if (m->type == 0) // After sseh_apply ()
-        return;
-
     if (m->type != SSEH_API_VERSION)
     {
         log () << "Unsupported SSEH interface v" << m->type
@@ -127,6 +124,9 @@ handle_sseh_message (SKSEMessagingInterface::Message* m)
                << "). Bailing out." << std::endl;
         return;
     }
+
+    if (m->dataLen == 0) // After sseh_apply ()
+        return;
 
     sseh.reset (new sseh_api (*reinterpret_cast<sseh_api*> (m->data)));
     log () << "Accepted SSEH interface v" << SSEH_API_VERSION << std::endl;
