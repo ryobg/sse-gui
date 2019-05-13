@@ -3,7 +3,7 @@
  * @brief Implementing SSEGUI as plugin for SKSE
  * @internal
  *
- * This file is part of SSE GUI project (aka SSEGUI).
+ * This file is part of Skyrim SE GUI mod (aka SSEGUI).
  *
  *   SSEGUI is free software: you can redistribute it and/or modify it
  *   under the terms of the GNU Lesser General Public License as published

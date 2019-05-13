@@ -2,7 +2,7 @@
  * @file input.cpp
  * @internal
  *
- * This file is part of SSE Hooks project (aka SSEGUI).
+ * This file is part of Skyrim SE GUI mod (aka SSEGUI).
  *
  *   SSEGUI is free software: you can redistribute it and/or modify it
  *   under the terms of the GNU Lesser General Public License as published
@@ -236,7 +236,7 @@ public:
             auto callee = reinterpret_cast<std::uint8_t*> (lpvData);
             keyboard_callback (gsl::make_span (callee, cbData));
 
-            if (di.mouse.disabled)
+            if (di.keyboard.disabled)
                 std::fill_n (callee, cbData, 0);
         }
         else

@@ -3,7 +3,7 @@
  * @brief Implementing the main test driver
  * @internal
  *
- * This file is part of SSE Hooks project (aka SSEGUI).
+ * This file is part of Skyrim SE GUI mod (aka SSEGUI).
  *
  *   SSEGUI is free software: you can redistribute it and/or modify it
  *   under the terms of the GNU Lesser General Public License as published
