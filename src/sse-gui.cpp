@@ -168,6 +168,15 @@ ssegui_parameter (const char* name, void* value)
 //--------------------------------------------------------------------------------------------------
 
 SSEGUI_API int SSEGUI_CCONV
+ssegui_clip_cursor (int enable)
+{
+    extern bool clip_cursor (bool clip);
+    return clip_cursor (enable);
+}
+
+//--------------------------------------------------------------------------------------------------
+
+SSEGUI_API int SSEGUI_CCONV
 ssegui_execute (const char* command, void* arg)
 {
     return false;
@@ -186,6 +195,7 @@ ssegui_make_api ()
     api.render_listener  = ssegui_render_listener;
     api.message_listener = ssegui_message_listener;
     api.parameter        = ssegui_parameter;
+    api.clip_cursor      = ssegui_clip_cursor;
     api.execute          = ssegui_execute;
     return api;
 }

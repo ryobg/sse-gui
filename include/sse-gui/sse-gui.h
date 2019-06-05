@@ -232,6 +232,26 @@ typedef int (SSEGUI_CCONV* ssegui_parameter_t) (const char*, void*);
 /******************************************************************************/
 
 /**
+ * Confine the cursor within the fullscreen window.
+ *
+ * On multi-monitor setup, in fullscreen mode, the cursor can get out of the
+ * window bounds and any click will cause minimization. This method, clips the
+ * cursor to stay within the window.
+ *
+ * @param[in] enable clipping, if non-zero, or disable it, if zero.
+ * @returns non-zero on success, otherwise see #ssegui_last_error ()
+ */
+
+SSEGUI_API int SSEGUI_CCONV
+ssegui_clip_cursor (int enable);
+
+/** @see #ssegui_clip_cursor() */
+
+typedef int (SSEGUI_CCONV* ssegui_clip_cursor_t) (int);
+
+/******************************************************************************/
+
+/**
  * Execute custom command.
  *
  * This is highly implementation specific and may change any moment. It is like
@@ -276,6 +296,8 @@ struct ssegui_api_v1
     ssegui_parameter_t parameter;
     /** @see #ssegui_execute() */
     ssegui_execute_t execute;
+    /** @see #ssegui_clip_cursor() */
+    ssegui_clip_cursor_t clip_cursor;
 };
 
 /** Points to the current API version in use. */
