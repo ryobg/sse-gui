@@ -30,6 +30,8 @@
 #include <gsl/gsl_util>
 #include <gsl/span>
 
+#include <utils/winutils.hpp>
+
 #include <string>
 #include <memory>
 #include <vector>
@@ -58,9 +60,6 @@ extern std::string sseh_error ();
 
 /// Defined in skse.cpp
 extern std::unique_ptr<sseh_api> sseh;
-
-/// Debug helper
-static const char* window_message_text (unsigned msg);
 
 /// All in one holder of DirectX & Co. fields
 struct render_t
@@ -204,6 +203,9 @@ setup_window ()
         return false;
     }
 
+    extern bool clip_cursor (bool);
+    clip_cursor (true);
+
     /*
     IUnknown: QueryInterface, AddRef, Release = 2,
     IDXGIObject: SetPrivateData, SetPrivateDataInterface, GetPrivateData, GetParent = 6,
@@ -218,7 +220,7 @@ setup_window ()
         return false;
     }
     auto d3d11present = (*(std::uintptr_t**) dx.chain)[8];
-    auto present_name = "IDXGISwapChain::Present";
+    auto present_name = "IDXGISwapChain.Present";
     sseh->map_name (present_name, d3d11present);
     if (!sseh->detour (present_name, (void*) &chain_present, (void**) &dx.chain_present_orig)
             || !sseh->apply ())
@@ -366,3 +368,54 @@ update_message_listener (void* callback, bool remove)
 
 //--------------------------------------------------------------------------------------------------
 
+bool
+clip_cursor (bool clip)
+{
+    Expects (dx.window);
+
+    if (!clip)
+    {
+        if (!::ClipCursor (nullptr))
+        {
+            ssegui_error = __func__ + " ClipCursor "s + format_utf8message (::GetLastError ());
+            return false;
+        }
+        return true;
+    }
+
+    RECT window_rect = {};
+    if (!::GetWindowRect (dx.window, &window_rect))
+    {
+        ssegui_error = __func__ + " GetWindowRect "s + format_utf8message (::GetLastError ());
+        return false;
+    }
+
+    HMONITOR monitor = ::MonitorFromWindow (dx.window, MONITOR_DEFAULTTONEAREST);
+
+    MONITORINFO info;
+    info.cbSize = sizeof (MONITORINFO);
+    if (!::GetMonitorInfo (monitor, &info))
+    {
+        ssegui_error = __func__ + " GetMonitorInfo "s;
+        return false;
+    }
+
+    // Test for fullscreen
+    auto monitor_width = info.rcMonitor.right - info.rcMonitor.left;
+    auto monitor_height = info.rcMonitor.bottom - info.rcMonitor.top;
+    auto window_width = window_rect.right - window_rect.left;
+    auto window_height = window_rect.bottom - window_rect.top;
+
+    if (window_width == monitor_width && window_height == monitor_height)
+    {
+        if (!::ClipCursor (&window_rect))
+        {
+            ssegui_error = __func__ + " ClipCursor "s + format_utf8message (::GetLastError ());
+            return false;
+        }
+    }
+
+    return true;
+}
+
+//--------------------------------------------------------------------------------------------------

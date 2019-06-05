@@ -66,7 +66,7 @@ def configure(conf):
 def build (bld):
     bld.shlib (
         target   = APPNAME, 
-        source   = bld.path.ant_glob ("src/*.cpp", excl=["src/test_*.cpp"]), 
+        source   = bld.path.ant_glob (["src/*.cpp", "share/utils/*.cpp"], excl=["src/test_*.cpp"]), 
         includes = ['src', 'include', 'share'],
         cxxflags = ['-DSSEGUI_BUILD_API', '-DSSEGUI_TIMESTAMP="'+str(_datetime_now())+'"'])
     for src in bld.path.ant_glob ("src/test_*.cpp"):
