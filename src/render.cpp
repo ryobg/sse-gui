@@ -122,8 +122,6 @@ find_top_window_callback (HWND hwnd, LPARAM lParam)
    WM_GETMINMAXINFO, 144, WM_DESTROY, WM_NCDESTROY
 
    The ones we block are the one found when dinput is switched to non exclusive mode.
-   Plus the ones for the mouse, which for some reason are not received, guess they should be
-   simulated (@file input.cpp).
 */
 
 static LRESULT CALLBACK
@@ -401,10 +399,10 @@ clip_cursor (bool clip)
     }
 
     // Test for fullscreen
-    auto monitor_width = info.rcMonitor.right - info.rcMonitor.left;
+    auto monitor_width  = info.rcMonitor.right  - info.rcMonitor.left;
     auto monitor_height = info.rcMonitor.bottom - info.rcMonitor.top;
-    auto window_width = window_rect.right - window_rect.left;
-    auto window_height = window_rect.bottom - window_rect.top;
+    auto window_width   = window_rect.right     - window_rect.left;
+    auto window_height  = window_rect.bottom    - window_rect.top;
 
     if (window_width == monitor_width && window_height == monitor_height)
     {
