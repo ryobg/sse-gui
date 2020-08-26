@@ -247,16 +247,10 @@ public:
         if (hres == DI_OK)
         {
             di.window = hwnd;
-            if (Keyboard && !di.keyboard.input)
-            {
-                di.keyboard.input = this;
+            if (Keyboard)
                 di.keyboard.cooperative_flags = dwFlags;
-            }
-            if (!Keyboard && !di.mouse.input)
-            {
-                di.mouse.input = this;
+            else
                 di.mouse.cooperative_flags = dwFlags;
-            }
         }
         return hres;
     }
@@ -384,8 +378,8 @@ public:
             if (hr == DI_OK)
             {
                 if (rguid == guid_keyboard)
-                     *lplpDirectInputDevice = new input_device<true > (orig);
-                else *lplpDirectInputDevice = new input_device<false> (orig);
+                     di.keyboard.input = *lplpDirectInputDevice = new input_device<true > (orig);
+                else di.mouse.input    = *lplpDirectInputDevice = new input_device<false> (orig);
             }
             return hr;
         }
