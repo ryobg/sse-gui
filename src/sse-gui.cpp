@@ -130,6 +130,15 @@ ssegui_control_key (int* dik)
 //--------------------------------------------------------------------------------------------------
 
 SSEGUI_API void SSEGUI_CCONV
+ssegui_control_listener (ssegui_control_callback callback, int remove)
+{
+    extern void update_disable_listener (void* callback, bool remove);
+    update_disable_listener ((void*) callback, !!remove);
+}
+
+//--------------------------------------------------------------------------------------------------
+
+SSEGUI_API void SSEGUI_CCONV
 ssegui_render_listener (ssegui_render_callback callback, int remove)
 {
     static_assert (
@@ -192,6 +201,7 @@ ssegui_make_api ()
     api.last_error       = ssegui_last_error;
     api.enable_input     = ssegui_enable_input;
     api.control_key      = ssegui_control_key;
+    api.control_listener = ssegui_control_listener;
     api.render_listener  = ssegui_render_listener;
     api.message_listener = ssegui_message_listener;
     api.parameter        = ssegui_parameter;

@@ -25,14 +25,19 @@
  * DirectInput hooking, handling, reporting and all others related to capturing input for the GUI.
  */
 
+#include <sse-gui/platform.h>
 #include <sse-hooks/sse-hooks.h>
 #include <gsl/span>
 
+#include <utils/winutils.hpp>
+
 #include <array>
 #include <string>
+#include <vector>
 #include <memory>
 #include <algorithm>
 #include <functional>
+#include <fstream>
 
 #include <windows.h>
 #define DIRECTINPUT_VERSION 0x0800
@@ -41,6 +46,9 @@
 //--------------------------------------------------------------------------------------------------
 
 using namespace std::string_literals;
+
+/// Opened from within skse.cpp
+extern std::ofstream& log ();
 
 /// Defined in sse-gui.cpp
 extern std::string ssegui_error;
@@ -62,14 +70,21 @@ struct input_t
     /// DInput buffered and unbuffered
     struct {
         bool disabled; ///< For the DInput callee (i.e. hijack)
+        IDirectInputDevice8A* input;
+        LPCDIDATAFORMAT data_format;
+        DWORD cooperative_flags;
     } keyboard;
     /// Based on DIMOUSESTATE2
     struct {
         bool disabled;
+        IDirectInputDevice8A* input;
+        LPCDIDATAFORMAT data_format;
+        DWORD cooperative_flags;
     } mouse;
 
     bool disable_dinput_key_pressed;
     unsigned disable_dinput_key;
+    std::vector<void(SSEGUI_CCONV*)(int,int)> disable_listeners;
 };
 
 /// One and only one object
@@ -95,10 +110,17 @@ static void
 keyboard_callback (gsl::span<std::uint8_t, 256> const& keys)
 {
     auto const& disable = keys[di.disable_dinput_key];
+
     if (std::exchange (di.disable_dinput_key_pressed, disable) && !disable)
     {
         di.mouse.disabled = !di.mouse.disabled;
         di.keyboard.disabled = !di.keyboard.disabled;
+
+        void dinput_exclusive_mode (int keyboard, int mouse);
+        dinput_exclusive_mode (!di.keyboard.disabled, !di.mouse.disabled);
+
+        for (auto const& f: di.disable_listeners)
+            f (!di.keyboard.disabled, !di.mouse.disabled);
     }
 }
 
@@ -195,9 +217,6 @@ public:
             LPDIACTIONFORMATA lpdiActionFormat, LPCSTR lptszUserName, DWORD dwFlags) {
         return p->SetActionMap (lpdiActionFormat, lptszUserName, dwFlags);
     }
-    STDMETHOD (SetDataFormat) (LPCDIDATAFORMAT lpdf) {
-        return p->SetDataFormat (lpdf);
-    }
     STDMETHOD (SetEventNotification) (HANDLE hEvent) {
         return p->SetEventNotification (hEvent);
     }
@@ -212,14 +231,33 @@ public:
         return p->WriteEffectToFile (lpszFileName, dwEntries, rgDiFileEft, dwFlags);
     }
 
+    STDMETHOD (SetDataFormat) (LPCDIDATAFORMAT lpdf)
+    {
+        if (Keyboard)
+            di.keyboard.data_format = lpdf;
+        else
+            di.mouse.data_format = lpdf;
+
+        return p->SetDataFormat (lpdf);
+    }
+
     STDMETHOD (SetCooperativeLevel) (HWND hwnd, DWORD dwFlags)
     {
-        // Allows window message loop for better GUI interraction.
-        dwFlags &= ~DISCL_EXCLUSIVE;
-        dwFlags |= DISCL_NONEXCLUSIVE;
         HRESULT hres = p->SetCooperativeLevel (hwnd, dwFlags);
         if (hres == DI_OK)
+        {
             di.window = hwnd;
+            if (Keyboard && !di.keyboard.input)
+            {
+                di.keyboard.input = this;
+                di.keyboard.cooperative_flags = dwFlags;
+            }
+            if (!Keyboard && !di.mouse.input)
+            {
+                di.mouse.input = this;
+                di.mouse.cooperative_flags = dwFlags;
+            }
+        }
         return hres;
     }
 
@@ -414,6 +452,40 @@ dinput_disable_key (unsigned* optional)
 {
     Expects (!optional || *optional < 256);
     return std::exchange (di.disable_dinput_key, optional ? *optional : di.disable_dinput_key);
+}
+
+//--------------------------------------------------------------------------------------------------
+
+void
+update_disable_listener (void* callback, bool remove)
+{
+    Expects (callback);
+    if (update_listener (di.disable_listeners, callback, remove))
+        log () << "Disable callback " << callback << (remove ? " removed.":" added.") << std::endl;
+}
+
+//--------------------------------------------------------------------------------------------------
+
+void
+dinput_exclusive_mode (int keyboard, int mouse)
+{
+    Expects (di.keyboard.input && di.mouse.input);
+
+    DWORD flags;
+
+    flags = di.keyboard.cooperative_flags & ~(DISCL_EXCLUSIVE | DISCL_NONEXCLUSIVE);
+    flags |= keyboard ? DISCL_EXCLUSIVE : DISCL_NONEXCLUSIVE;
+    di.keyboard.input->Unacquire ();
+    di.keyboard.input->SetCooperativeLevel (di.window, flags);
+    di.keyboard.input->SetDataFormat (di.keyboard.data_format);
+    di.keyboard.input->Acquire ();
+
+    flags = di.mouse.cooperative_flags & ~(DISCL_EXCLUSIVE | DISCL_NONEXCLUSIVE);
+    flags |= mouse ? DISCL_EXCLUSIVE : DISCL_NONEXCLUSIVE;
+    di.mouse.input->Unacquire ();
+    di.mouse.input->SetCooperativeLevel (di.window, flags);
+    di.mouse.input->SetDataFormat (di.mouse.data_format);
+    di.mouse.input->Acquire ();
 }
 
 //--------------------------------------------------------------------------------------------------

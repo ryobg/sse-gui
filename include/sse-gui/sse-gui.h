@@ -138,6 +138,7 @@ typedef void (SSEGUI_CCONV* ssegui_enable_input_t) (int*, int*);
  * by SKSE and the KeyPressed(...) and etc. functions available for Papyrus.
  *
  * @see https://docs.microsoft.com/en-us/previous-versions/windows/desktop/ee418641(v=vs.85)
+ * @see #ssegui_control_listener()
  * @param[in,out] dik constant to be used from now on, if the param is negative
  *  or out of bounds (>255) it won't change the constant. On exit it will
  *  contain the previous, or the current (if not changed) key used.
@@ -149,6 +150,34 @@ ssegui_control_key (int* dik);
 /** @see #ssegui_control_key() */
 
 typedef void (SSEGUI_CCONV* ssegui_control_key_t) (int*);
+
+/******************************************************************************/
+
+/** Zero indicates that the corresponding device has been just disabled for the game. */
+
+typedef void (SSEGUI_CCONV* ssegui_control_callback)
+    (int keyboard, int mouse);
+
+/**
+ * Register or remove a DInput enabled/disabled listener
+ *
+ * The callback is called on each switch between enabling or disabling the
+ * keyboard and mouse devices. Initially, they are enabled, but pressing the
+ * control key (#ssegui_control_key()), zeroes the data received from them.
+ * This means they are effectively disabled and the game cannot see them.
+ *
+ * @see #ssegui_control_key()
+ * @param[in] callback to call or @param remove
+ * @param[in] remove if positive, append if zero.
+ */
+
+SSEGUI_API void SSEGUI_CCONV
+ssegui_control_listener (ssegui_control_callback callback, int remove);
+
+/** @see #ssegui_control_listener() */
+
+typedef void (SSEGUI_CCONV* ssegui_control_listener_t)
+    (ssegui_control_callback, int);
 
 /******************************************************************************/
 
@@ -298,6 +327,8 @@ struct ssegui_api_v1
     ssegui_execute_t execute;
     /** @see #ssegui_clip_cursor() */
     ssegui_clip_cursor_t clip_cursor;
+    /** @see #ssegui_control_listener() */
+    ssegui_control_listener_t control_listener;
 };
 
 /** Points to the current API version in use. */

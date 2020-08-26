@@ -166,5 +166,31 @@ bool file_exists (T const& name) //allow const char*
 
 //--------------------------------------------------------------------------------------------------
 
+/// Generic, low-level add/remove management of function callbacks in/from a container.
+
+template<class T>
+static bool
+update_listener (T& list, void* callback, bool remove)
+{
+    auto l = reinterpret_cast<typename T::value_type> (callback);
+    if (remove)
+    {
+        auto n = std::remove (list.begin (), list.end (), l);
+        if (n != list.end ())
+        {
+            list.erase (n);
+            return true;
+        }
+    }
+    else if (std::find (list.cbegin (), list.cend (), l) == list.cend ())
+    {
+        list.push_back (l);
+        return true;
+    }
+    return false;
+}
+
+//--------------------------------------------------------------------------------------------------
+
 #endif
 

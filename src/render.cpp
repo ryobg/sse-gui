@@ -330,24 +330,6 @@ enable_messaging (bool* optional)
 
 /// void* as too lazy to type the type when needed.
 
-template<class T>
-static bool
-update_listener (T& list, void* callback, bool remove)
-{
-    auto l = reinterpret_cast<typename T::value_type> (callback);
-    if (remove)
-    {
-        list.erase (std::remove (list.begin (), list.end (),  l));
-        return true;
-    }
-    else if (std::find (list.cbegin (), list.cend (), l) == list.cend ())
-    {
-        list.push_back (l);
-        return true;
-    }
-    return false;
-}
-
 void
 update_render_listener (void* callback, bool remove)
 {
