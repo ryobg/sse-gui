@@ -29,6 +29,7 @@ Waf is Python (2/3) based build system similar to SCons & Make.
 '''
 
 import os
+import shutil, subprocess
 
 #---------------------------------------------------------------------------------------------------
 
@@ -57,7 +58,7 @@ def configure(conf):
     if conf.env['CXX_NAME'] is 'gcc':
         conf.check_cxx (msg="Checking for '-std=c++14'", cxxflags='-std=c++14') 
         conf.env.append_unique('CXXFLAGS', \
-                ['-std=c++14', "-O2", "-Wall", "-D_UNICODE", "-DUNICODE"])
+                ['-std=c++17', "-O2", "-Wall", "-D_UNICODE", "-DUNICODE"])
         conf.env.append_unique ('STLIB', ['stdc++', 'pthread', 'dwmapi', 'ole32'])
         conf.env.append_unique ('LINKFLAGS', ['-static-libgcc', '-static-libstdc++'])
     elif conf.env['CXX_NAME'] is 'msvc':
@@ -75,14 +76,14 @@ def build (bld):
         bld.program (target=f, source=[src], includes='include', use=APPNAME)
 
 def pack (bld):
-    import shutil, subprocess
     shutil.rmtree ("Data", ignore_errors=True)
+    shutil.copytree ("assets/Data", "Data")
+    
     dll = APPNAME+".dll"
-    root = "Data/SKSE/Plugins/"
-    os.makedirs (root);
-    #shutil.copytree ("assets/Data", "Data")
+    root = "data/skse/plugins/"
     shutil.copyfile ("out/"+dll, root+dll)
     subprocess.Popen (["x86_64-w64-mingw32-strip", "-g", root+dll]).communicate ()
+
     subprocess.Popen (["7z", "a", APPNAME+"-"+VERSION+".7z", 'Data']).communicate ()
     shutil.rmtree ("Data", ignore_errors=True)
 

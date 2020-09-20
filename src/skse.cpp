@@ -33,6 +33,7 @@
 #include <sse-hooks/sse-hooks.h>
 #include <gsl/gsl_assert>
 #include <utils/winutils.hpp>
+#include <nlohmann/json.hpp>
 
 #include <cstdint>
 typedef std::uint32_t UInt32;
@@ -215,6 +216,37 @@ SKSEPlugin_Query (SKSEInterface const* skse, PluginInfo* info)
 
 //--------------------------------------------------------------------------------------------------
 
+static void
+load_settings ()
+{
+    try
+    {
+        nlohmann::json json = nlohmann::json::object ();
+        const char* path = "Data\\SKSE\\Plugins\\sse-gui\\settings.json";
+        std::ifstream fi (path);
+        if (!fi.is_open ())
+            log () << "Unable to open " << path << " for reading." << std::endl;
+        else
+            fi >> json;
+
+        unsigned disable_key = 210;
+        if (json.contains ("dinput"))
+        {
+            auto& j = json["dinput"];
+            disable_key = j.value ("disable key", disable_key);
+        }
+
+        extern unsigned dinput_disable_key (unsigned* optional);
+        dinput_disable_key (&disable_key);
+    }
+    catch (std::exception const& ex)
+    {
+        log () << "Loading settings failed: " << ex.what () << std::endl;
+    }
+}
+
+//--------------------------------------------------------------------------------------------------
+
 /// @see SKSE.PluginAPI.h
 
 extern "C" SSEGUI_API bool SSEGUI_CCONV
@@ -229,6 +261,8 @@ SKSEPlugin_Load (SKSEInterface const* skse)
     const char* b;
     ssegui_version (&a, &m, &p, &b);
     log () << "SSEGUI "<< a <<'.'<< m <<'.'<< p <<" ("<< b <<')' << std::endl;
+
+    load_settings ();
     return true;
 }
 

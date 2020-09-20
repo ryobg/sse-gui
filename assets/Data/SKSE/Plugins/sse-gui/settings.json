@@ -1,0 +1,11 @@
+{
+    "dinput": {
+        "disable key": 210
+    },
+    "version": {
+        "major": 1,
+        "minor": 2,
+        "patch": 2,
+        "timestamp": "2020-09-20T00:00:00.000000+00:00"
+    }
+}
