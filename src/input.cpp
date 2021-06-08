@@ -116,11 +116,8 @@ keyboard_callback (gsl::span<std::uint8_t, 256> const& keys)
         di.mouse.disabled = !di.mouse.disabled;
         di.keyboard.disabled = !di.keyboard.disabled;
 
-        void dinput_exclusive_mode (int keyboard, int mouse);
-        dinput_exclusive_mode (!di.keyboard.disabled, !di.mouse.disabled);
-
-        for (auto const& f: di.disable_listeners)
-            f (!di.keyboard.disabled, !di.mouse.disabled);
+        extern void handle_input_changed ();
+        handle_input_changed ();
     }
 }
 
@@ -478,6 +475,16 @@ dinput_exclusive_mode (int keyboard, int mouse)
     di.mouse.input->SetCooperativeLevel (di.window, flags);
     di.mouse.input->SetDataFormat (di.mouse.data_format);
     di.mouse.input->Acquire ();
+}
+
+//--------------------------------------------------------------------------------------------------
+
+void handle_input_changed ()
+{
+    dinput_exclusive_mode (!di.keyboard.disabled, !di.mouse.disabled);
+
+    for (auto const& f: di.disable_listeners)
+        f (!di.keyboard.disabled, !di.mouse.disabled);
 }
 
 //--------------------------------------------------------------------------------------------------

@@ -107,15 +107,22 @@ ssegui_enable_input (int* keyboard, int* mouse)
 {
     extern bool keyboard_enable (bool* optional);
     extern bool mouse_enable (bool* optional);
+    extern void handle_input_changed ();
     bool f;
 
     if (*keyboard  > 0) f = true;
     if (*keyboard == 0) f = false;
-    *keyboard = keyboard_enable (*keyboard < 0 ? nullptr : &f);
+    int old_keyboard = keyboard_enable (*keyboard < 0 ? nullptr : &f);
 
     if (*mouse  > 0) f = true;
     if (*mouse == 0) f = false;
-    *mouse = mouse_enable (*mouse < 0 ? nullptr : &f);
+    int old_mouse = mouse_enable (*mouse < 0 ? nullptr : &f);
+
+    if (old_keyboard != *keyboard || old_mouse != *mouse)
+        handle_input_changed ();
+
+    *keyboard = old_keyboard;
+    *mouse = old_mouse;
 }
 
 //--------------------------------------------------------------------------------------------------
