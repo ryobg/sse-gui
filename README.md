@@ -19,12 +19,12 @@ Refer to `include/sse-gui/sse-gui.h` file for API specification.
 ## Required tools
 
 * Python 3.x for the build system (2.x may work too)
-* C++14 compatible compiler available on the PATH
+* C++20 compatible compiler available on the PATH
 * Uses at run-time https://github.com/ryobg/sse-hooks
 
 Under Windows10/WSL with MinGW, it can be configure & build as:
 ```
-CXX=x86_64-w64-mingw32-g++-posix AR=x86_64-w64-mingw32-ar ./waf configure
+CXX=x86_64-w64-mingw32-g++-posix ./waf configure
 ./waf
 ```
 
